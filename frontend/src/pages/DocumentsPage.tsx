@@ -13,7 +13,7 @@ import { Plus, X, Settings, FolderPlus, HardDrive } from "lucide-react";
 import { GoogleDriveImport } from "@/components/documents/GoogleDriveImport";
 import { useOrg } from "@/hooks/useOrg";
 import type { Id } from "@/types";
-import logo from "/logo-genesis.jpg";
+import logo from "/logo-brd.jpg";
 
 export function DocumentsPage() {
   const navigate = useNavigate();

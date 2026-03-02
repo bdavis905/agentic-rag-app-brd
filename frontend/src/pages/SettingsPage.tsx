@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useOrg } from '@/hooks/useOrg'
 import { OrgSwitcher } from '@/components/OrgSwitcher'
 import { api } from '../../convex/_generated/api'
-import logo from '/logo-genesis.jpg'
+import logo from '/logo-brd.jpg'
 
 function PasswordInput({
   value,

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useOrg } from '@/hooks/useOrg'
 import { api } from '../../convex/_generated/api'
-import logo from '/logo-genesis.jpg'
+import logo from '/logo-brd.jpg'
 
 export function ChatPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
