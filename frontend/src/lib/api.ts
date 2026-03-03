@@ -29,6 +29,7 @@ export interface SendMessageOptions {
   onExplorerReasoning?: (content: string) => void;
   onExplorerComplete?: (findings: string) => void;
   onExplorerError?: (error: string) => void;
+  onSkillActivated?: (skillId: string, skillName: string) => void;
   onThreadTitle?: (title: string) => void;
   signal?: AbortSignal;
 }
@@ -60,6 +61,7 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
     onExplorerReasoning,
     onExplorerComplete,
     onExplorerError,
+    onSkillActivated,
     onThreadTitle,
     signal,
   } = options;
@@ -160,6 +162,9 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
             break;
           case "explorer_error":
             onExplorerError?.(event.error ?? "");
+            break;
+          case "skill_activated":
+            onSkillActivated?.(event.skill_id ?? "", event.skill_name ?? "");
             break;
           case "thread_title":
             onThreadTitle?.(event.title ?? "");

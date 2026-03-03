@@ -92,6 +92,12 @@ export function DocumentsPage() {
             <button className="flex-1 px-3 py-1.5 rounded-md text-sm font-medium bg-background shadow-sm transition-all duration-200">
               Documents
             </button>
+            <button
+              onClick={() => navigate("/skills")}
+              className="flex-1 px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-background/50 transition-all duration-200"
+            >
+              Skills
+            </button>
           </div>
         </nav>
 

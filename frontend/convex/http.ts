@@ -122,14 +122,37 @@ Before answering any question, you MUST first develop a retrieval strategy:
 - Always cite: Reference specific documents or web sources.
 - Explain gaps: If you couldn't find information, say so.`;
 
-function getSystemPrompt(customInstructions?: string): string {
+function getSystemPrompt(customInstructions?: string, skillsCatalog?: string): string {
   const persona = customInstructions || DEFAULT_PERSONA;
-  return `${persona}\n\n${TOOL_INSTRUCTIONS}`;
+  let prompt = `${persona}\n\n${TOOL_INSTRUCTIONS}`;
+
+  if (skillsCatalog) {
+    prompt += `\n\n## Available Skills
+
+You have access to reusable skill modules. When a user's question matches a skill, call \`load_skill\` to get its full instructions before answering.
+
+${skillsCatalog}
+
+**Usage:** Call \`load_skill\` with the skill ID to load its instructions. Only load a skill when it's relevant to the current question.`;
+  }
+
+  return prompt;
+}
+
+/** Build a markdown table of enabled skills for the system prompt. */
+function buildSkillsCatalog(
+  skills: Array<{ _id: any; name: string; description: string }>,
+): string {
+  if (skills.length === 0) return "";
+  const rows = skills.map(
+    (s) => `| ${s.name} | ${s._id} | ${s.description} |`,
+  );
+  return `| Skill | ID | Description |\n|-------|-----|-------------|\n${rows.join("\n")}`;
 }
 
 // ─── Tool Definitions ────────────────────────────────────────────
 
-function getToolDefinitions(includeWebSearch: boolean): any[] {
+function getToolDefinitions(includeWebSearch: boolean, hasSkills: boolean = false): any[] {
   const tools: any[] = [
     {
       type: "function",
@@ -314,6 +337,55 @@ function getToolDefinitions(includeWebSearch: boolean): any[] {
         },
       },
     });
+  }
+
+  if (hasSkills) {
+    tools.push(
+      {
+        type: "function",
+        function: {
+          name: "load_skill",
+          description:
+            "Load full instructions for a skill. Use when a skill from the Available Skills list is relevant to the user's question.",
+          parameters: {
+            type: "object",
+            properties: {
+              skill_id: {
+                type: "string",
+                description: "The skill ID from the Available Skills table",
+              },
+            },
+            required: ["skill_id"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "save_skill",
+          description:
+            "Create a new reusable skill. Use when the user asks you to save instructions as a skill.",
+          parameters: {
+            type: "object",
+            properties: {
+              name: {
+                type: "string",
+                description: "Short, kebab-case name for the skill",
+              },
+              description: {
+                type: "string",
+                description: "One-line description of what the skill does",
+              },
+              instructions: {
+                type: "string",
+                description: "Full instructions the LLM should follow when this skill is activated",
+              },
+            },
+            required: ["name", "description", "instructions"],
+          },
+        },
+      },
+    );
   }
 
   return tools;
@@ -581,6 +653,45 @@ async function executeTool(
 
   if (toolName === "explore_knowledge_base") {
     return await runExplorerAgent(ctx, args, userId, emit, llmConfig, orgId);
+  }
+
+  if (toolName === "load_skill") {
+    const skillId = args.skill_id;
+    if (!skillId) return "Error: No skill_id provided.";
+    try {
+      const skill = await ctx.runQuery(internal.skills.queries.getById, {
+        skillId,
+      });
+      if (!skill) return "Error: Skill not found.";
+      // Verify skill belongs to same org or is global
+      if (skill.orgId !== orgId && !skill.isGlobal) {
+        return "Error: Skill not accessible.";
+      }
+      emit("skill_activated", {
+        skill_id: skill._id,
+        skill_name: skill.name,
+      });
+      return `## Skill: ${skill.name}\n\n${skill.instructions}`;
+    } catch {
+      return "Error: Failed to load skill.";
+    }
+  }
+
+  if (toolName === "save_skill") {
+    const { name, description, instructions } = args;
+    if (!name || !description || !instructions) {
+      return "Error: name, description, and instructions are all required.";
+    }
+    if (!orgId) return "Error: No organization context for saving skill.";
+    try {
+      const skillId = await ctx.runMutation(
+        internal.skills.mutations.createFromTool,
+        { orgId, name, description, instructions, createdBy: userId },
+      );
+      return `Skill "${name}" saved successfully (ID: ${skillId}).`;
+    } catch (e: any) {
+      return `Error saving skill: ${e.message}`;
+    }
   }
 
   return `Error: Unknown tool '${toolName}'`;
@@ -1035,6 +1146,8 @@ function getResultSummary(toolName: string, result: string): string {
   }
   if (toolName === "analyze_document") return "Analysis complete";
   if (toolName === "explore_knowledge_base") return "Exploration complete";
+  if (toolName === "load_skill") return "Skill loaded";
+  if (toolName === "save_skill") return "Skill saved";
   return "Complete";
 }
 
@@ -1092,7 +1205,18 @@ async function runChatLoop(params: {
     (settings?.webSearchEnabled ?? false) &&
     !!(settings?.webSearchApiKey || process.env.TAVILY_API_KEY);
 
-  const tools = getToolDefinitions(webSearchEnabled);
+  // Fetch enabled skills for this org
+  let skillsCatalog = "";
+  if (orgId) {
+    const enabledSkills = await ctx.runQuery(
+      internal.skills.queries.listEnabled,
+      { orgId },
+    );
+    skillsCatalog = buildSkillsCatalog(enabledSkills);
+  }
+  const hasSkills = skillsCatalog.length > 0;
+
+  const tools = getToolDefinitions(webSearchEnabled, hasSkills);
 
   // Check if this is the first exchange (for title generation)
   const messageCount = await ctx.runQuery(
@@ -1103,7 +1227,7 @@ async function runChatLoop(params: {
 
   let fullResponse = "";
   const currentMessages = [
-    { role: "system", content: getSystemPrompt(settings?.chatSystemPrompt || undefined) },
+    { role: "system", content: getSystemPrompt(settings?.chatSystemPrompt || undefined, skillsCatalog || undefined) },
     ...messages,
   ];
   const allToolCalls: any[] = [];

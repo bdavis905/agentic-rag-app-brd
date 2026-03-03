@@ -5,6 +5,7 @@ import { AuthPage } from "./components/auth/AuthPage";
 import { ChatPage } from "./pages/ChatPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { SkillsPage } from "./pages/SkillsPage";
 import { GoogleDriveCallbackPage } from "./pages/GoogleDriveCallbackPage";
 
 function AppContent() {
@@ -32,6 +33,16 @@ function AppContent() {
           element={
             isAuthenticated ? (
               <DocumentsPage />
+            ) : (
+              <Navigate to="/auth" replace />
+            )
+          }
+        />
+        <Route
+          path="/skills"
+          element={
+            isAuthenticated ? (
+              <SkillsPage />
             ) : (
               <Navigate to="/auth" replace />
             )

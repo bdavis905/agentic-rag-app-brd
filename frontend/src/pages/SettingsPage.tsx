@@ -107,7 +107,7 @@ function ModelSelector({
         <Input
           name="llm-model"
           autoComplete="off"
-          placeholder="e.g., gpt-4o, anthropic/claude-3.5-sonnet"
+          placeholder="e.g., gpt-4o, anthropic/claude-sonnet-4-5-20250514"
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -830,6 +830,12 @@ export function SettingsPage() {
               className="flex-1 px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-background/50 transition-all duration-200"
             >
               Documents
+            </button>
+            <button
+              onClick={() => navigate('/skills')}
+              className="flex-1 px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-background/50 transition-all duration-200"
+            >
+              Skills
             </button>
           </div>
         </nav>

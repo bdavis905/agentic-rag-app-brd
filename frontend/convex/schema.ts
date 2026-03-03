@@ -148,6 +148,21 @@ export default defineSchema({
     chatSystemPrompt: v.optional(v.string()),
   }).index("by_org", ["orgId"]),
 
+  skills: defineTable({
+    orgId: v.string(),
+    name: v.string(),
+    description: v.string(),
+    instructions: v.string(),
+    enabled: v.boolean(),
+    isGlobal: v.optional(v.boolean()),
+    sharedBy: v.optional(v.string()),
+    createdBy: v.string(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_org_enabled", ["orgId", "enabled"])
+    .index("by_org_name", ["orgId", "name"]),
+
   // ─── Google Drive (connection is per-user, files get orgId) ───
 
   googleDriveConnections: defineTable({

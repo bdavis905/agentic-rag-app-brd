@@ -41,6 +41,8 @@ import type * as search_internals from "../search/internals.js";
 import type * as settings_actions from "../settings/actions.js";
 import type * as settings_mutations from "../settings/mutations.js";
 import type * as settings_queries from "../settings/queries.js";
+import type * as skills_mutations from "../skills/mutations.js";
+import type * as skills_queries from "../skills/queries.js";
 
 import type {
   ApiFromModules,
@@ -82,6 +84,8 @@ declare const fullApi: ApiFromModules<{
   "settings/actions": typeof settings_actions;
   "settings/mutations": typeof settings_mutations;
   "settings/queries": typeof settings_queries;
+  "skills/mutations": typeof skills_mutations;
+  "skills/queries": typeof skills_queries;
 }>;
 
 /**
