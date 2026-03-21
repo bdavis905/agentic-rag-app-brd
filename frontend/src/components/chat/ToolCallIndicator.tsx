@@ -1,4 +1,4 @@
-import { Search, Database, Globe, FileSearch, Loader2, Check } from 'lucide-react'
+import { Search, Database, Globe, FileSearch, Loader2, Check, Code } from 'lucide-react'
 import type { ToolCallInfo } from '@/types'
 
 interface ToolCallIndicatorProps {
@@ -10,6 +10,7 @@ const toolIcons: Record<string, typeof Search> = {
   analyze_document: FileSearch,
   query_sales_database: Database,
   web_search: Globe,
+  execute_code: Code,
 }
 
 const toolLabels: Record<string, string> = {
@@ -17,6 +18,7 @@ const toolLabels: Record<string, string> = {
   analyze_document: 'Analyzing document',
   query_sales_database: 'Querying database',
   web_search: 'Searching web',
+  execute_code: 'Executing code',
 }
 
 export function ToolCallIndicator({ toolCall }: ToolCallIndicatorProps) {

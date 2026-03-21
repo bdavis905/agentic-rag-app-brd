@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Search, Database, Globe, FileSearch, Loader2, Check, Circle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Search, Database, Globe, FileSearch, Loader2, Check, Circle, Code } from 'lucide-react'
 import type { ToolCallInfo } from '@/types'
 
 interface StepsPanelProps {
@@ -11,6 +11,7 @@ const toolIcons: Record<string, typeof Search> = {
   analyze_document: FileSearch,
   query_sales_database: Database,
   web_search: Globe,
+  execute_code: Code,
 }
 
 const toolLabels: Record<string, string> = {
@@ -18,6 +19,7 @@ const toolLabels: Record<string, string> = {
   analyze_document: 'Analyze Document',
   query_sales_database: 'SQL Query',
   web_search: 'Web Search',
+  execute_code: 'Code Execution',
 }
 
 function getQueryFromArgs(toolName: string, args: string): string {
@@ -33,6 +35,10 @@ function getQueryFromArgs(toolName: string, args: string): string {
     }
     if (toolName === 'analyze_document') {
       return parsed.query || 'Analyzing document'
+    }
+    if (toolName === 'execute_code') {
+      const code = parsed.code || ''
+      return code.length > 60 ? code.substring(0, 57) + '...' : code || 'Running Python code'
     }
     return args
   } catch {

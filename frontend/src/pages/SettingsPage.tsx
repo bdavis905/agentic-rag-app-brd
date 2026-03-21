@@ -12,6 +12,29 @@ import { OrgSwitcher } from '@/components/OrgSwitcher'
 import { api } from '../../convex/_generated/api'
 import logo from '/logo-brd.jpg'
 
+// ─── Provider Detection ───────────────────────────────────────
+
+const KNOWN_PROVIDERS: Record<string, string> = {
+  openrouter: 'https://openrouter.ai/api/v1',
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com/v1',
+}
+
+function detectProvider(apiKey: string): { provider: string; baseUrl: string } | null {
+  if (apiKey.startsWith('sk-or-')) return { provider: 'openrouter', baseUrl: KNOWN_PROVIDERS.openrouter }
+  if (apiKey.startsWith('sk-ant-')) return { provider: 'anthropic', baseUrl: KNOWN_PROVIDERS.anthropic }
+  if (apiKey.startsWith('sk-proj-') || apiKey.startsWith('sk-')) return { provider: 'openai', baseUrl: KNOWN_PROVIDERS.openai }
+  return null
+}
+
+const KNOWN_BASE_URLS = new Set(Object.values(KNOWN_PROVIDERS))
+
+const EMBEDDING_MODELS = [
+  { id: 'text-embedding-3-small', name: 'text-embedding-3-small (OpenAI)', dimensions: 1536 },
+  { id: 'text-embedding-3-large', name: 'text-embedding-3-large (OpenAI)', dimensions: 3072 },
+  { id: 'text-embedding-ada-002', name: 'text-embedding-ada-002 (OpenAI)', dimensions: 1536 },
+]
+
 function PasswordInput({
   value,
   onChange,
@@ -960,26 +983,42 @@ export function SettingsPage() {
                 <h3 className="text-sm font-medium text-foreground">LLM Configuration</h3>
                 <div className="space-y-4 p-4 rounded-xl border border-border/50 bg-card">
                   <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">API Key</label>
+                    <PasswordInput
+                      name="llm-api-key"
+                      placeholder="Paste your API key — provider and URL will be detected automatically"
+                      value={llmApiKey}
+                      onChange={(key) => {
+                        setLlmApiKey(key)
+                        if (!key.includes('***')) {
+                          const detected = detectProvider(key)
+                          if (detected && (!llmBaseUrl || KNOWN_BASE_URLS.has(llmBaseUrl))) {
+                            setLlmBaseUrl(detected.baseUrl)
+                          }
+                        }
+                      }}
+                    />
+                    {llmApiKey && !llmApiKey.includes('***') && detectProvider(llmApiKey) && (
+                      <p className="text-xs text-emerald-400">
+                        Detected: {detectProvider(llmApiKey)!.provider}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
                     <label className="text-xs font-medium text-muted-foreground">Model</label>
                     <ModelSelector value={llmModel} onChange={setLlmModel} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">Base URL</label>
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Base URL
+                      <span className="text-muted-foreground/50 font-normal ml-1">(auto-detected)</span>
+                    </label>
                     <Input
                       name="llm-base-url"
                       autoComplete="off"
                       placeholder="e.g., https://openrouter.ai/api/v1"
                       value={llmBaseUrl}
                       onChange={(e) => setLlmBaseUrl(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">API Key</label>
-                    <PasswordInput
-                      name="llm-api-key"
-                      placeholder="sk-..."
-                      value={llmApiKey}
-                      onChange={setLlmApiKey}
                     />
                   </div>
                 </div>
@@ -1003,36 +1042,41 @@ export function SettingsPage() {
                     </p>
                   )}
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">Model Name</label>
-                    <Input
-                      name="embedding-model"
-                      autoComplete="off"
-                      placeholder="e.g., text-embedding-3-small"
-                      value={embeddingModel}
-                      onChange={(e) => setEmbeddingModel(e.target.value)}
-                      disabled={embeddingLocked}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">Base URL</label>
-                    <Input
-                      name="embedding-base-url"
-                      autoComplete="off"
-                      placeholder="e.g., https://api.openai.com/v1"
-                      value={embeddingBaseUrl}
-                      onChange={(e) => setEmbeddingBaseUrl(e.target.value)}
-                      disabled={embeddingLocked}
-                    />
-                  </div>
-                  <div className="space-y-2">
                     <label className="text-xs font-medium text-muted-foreground">API Key</label>
                     <PasswordInput
                       name="embedding-api-key"
-                      placeholder="sk-..."
+                      placeholder="Paste your OpenAI API key"
                       value={embeddingApiKey}
-                      onChange={setEmbeddingApiKey}
+                      onChange={(key) => {
+                        setEmbeddingApiKey(key)
+                        if (!key.includes('***')) {
+                          const detected = detectProvider(key)
+                          if (detected && (!embeddingBaseUrl || KNOWN_BASE_URLS.has(embeddingBaseUrl))) {
+                            setEmbeddingBaseUrl(detected.baseUrl)
+                          }
+                        }
+                      }}
                       disabled={embeddingLocked}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">Model</label>
+                    <select
+                      name="embedding-model"
+                      value={embeddingModel}
+                      onChange={(e) => {
+                        setEmbeddingModel(e.target.value)
+                        const match = EMBEDDING_MODELS.find(m => m.id === e.target.value)
+                        if (match) setEmbeddingDimensions(match.dimensions.toString())
+                      }}
+                      disabled={embeddingLocked}
+                      className="flex h-9 w-full rounded-md border border-border/50 bg-background px-3 py-1 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                    >
+                      <option value="">Select a model...</option>
+                      {EMBEDDING_MODELS.map(m => (
+                        <option key={m.id} value={m.id}>{m.name} — {m.dimensions}d</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-muted-foreground">Dimensions</label>
@@ -1040,9 +1084,23 @@ export function SettingsPage() {
                       name="embedding-dimensions"
                       type="number"
                       autoComplete="off"
-                      placeholder="e.g., 1536"
+                      placeholder="Auto-filled from model selection"
                       value={embeddingDimensions}
                       onChange={(e) => setEmbeddingDimensions(e.target.value)}
+                      disabled={embeddingLocked}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Base URL
+                      <span className="text-muted-foreground/50 font-normal ml-1">(auto-detected)</span>
+                    </label>
+                    <Input
+                      name="embedding-base-url"
+                      autoComplete="off"
+                      placeholder="e.g., https://api.openai.com/v1"
+                      value={embeddingBaseUrl}
+                      onChange={(e) => setEmbeddingBaseUrl(e.target.value)}
                       disabled={embeddingLocked}
                     />
                   </div>
