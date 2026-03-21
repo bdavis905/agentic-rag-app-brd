@@ -123,6 +123,10 @@ Before answering any question, you MUST first develop a retrieval strategy:
    - Run data analysis and computations
    - Save output files to /home/user/ and list them in output_filenames
 
+11. **workspace_write** - Save any text file (markdown, JSON, CSV, etc.) to the workspace.
+   - Use this when asked to save, export, or create files. No code execution needed.
+   - Files appear in the user's Workspace panel for viewing and download.
+
 ## Important Guidelines
 - Be thorough: One search is rarely enough for complex questions.
 - Vary your queries: Use synonyms and different phrasings.
@@ -154,28 +158,31 @@ You have access to \`execute_code\` which runs Python code in a sandboxed enviro
 - Keep code self-contained — each execution starts fresh`;
   }
 
-  if (deepMode) {
-    prompt += `\n\n## Deep Mode: Planning & Workspace
+  // Workspace instructions — always included
+  prompt += `\n\n## Workspace (File Saving)
 
-You are in **Deep Mode**. For complex tasks, you should:
+You can save files to a per-conversation workspace. When the user asks you to save, export, or create any file, use \`workspace_write\` — it works instantly, no code execution needed.
 
-1. **Plan first**: Use \`write_todos\` to create a step-by-step plan before starting work.
-2. **Track progress**: Update todo statuses as you complete each step.
-3. **Save artifacts**: Use \`workspace_write\` to save analysis results, summaries, reports, and drafts.
-4. **Iterate**: Read workspace files with \`workspace_read\` and edit them with \`workspace_edit\`.
-
-### Workspace Tools
-- \`workspace_write(file_path, content)\` — Save/overwrite a file
-- \`workspace_read(file_path)\` — Read a file
+- \`workspace_write(file_path, content)\` — Save or overwrite a file (e.g. "ads.md", "report.json")
+- \`workspace_read(file_path)\` — Read a saved file
 - \`workspace_list()\` — List all workspace files
 - \`workspace_append(file_path, content)\` — Append to a file
 - \`workspace_edit(file_path, edits)\` — Find/replace edits
 
+**IMPORTANT:** ALWAYS use \`workspace_write\` to save files. Do NOT search the knowledge base or use code execution to save text files.`;
+
+  if (deepMode) {
+    prompt += `\n\n## Deep Mode: Planning
+
+You are in **Deep Mode**. For complex tasks:
+
+1. **Plan first**: Use \`write_todos\` to create a step-by-step plan before starting work.
+2. **Track progress**: Update todo statuses as you complete each step.
+3. **Save artifacts**: Use \`workspace_write\` to save results as you go.
+
 ### Planning Tools
 - \`write_todos(todos)\` — Create/replace the plan checklist
-- \`read_todos()\` — View current plan
-
-**Always plan before executing complex tasks. Save important outputs to the workspace.**`;
+- \`read_todos()\` — View current plan`;
   }
 
   if (skillsCatalog) {
@@ -473,6 +480,113 @@ function getToolDefinitions(includeWebSearch: boolean, hasSkills: boolean = fals
     );
   }
 
+  // ─── Workspace tools — always available ─────────────────────
+  tools.push(
+    {
+      type: "function",
+      function: {
+        name: "workspace_write",
+        description:
+          "Save a file to the workspace. ALWAYS use this when asked to save, export, or create any file (markdown, text, JSON, CSV, etc.). No code execution needed — this tool saves files directly.",
+        parameters: {
+          type: "object",
+          properties: {
+            file_path: {
+              type: "string",
+              description:
+                "Relative file path (e.g. 'summary.md', 'data/analysis.json', 'ads.md')",
+            },
+            content: {
+              type: "string",
+              description: "File content to write",
+            },
+            content_type: {
+              type: "string",
+              description: "MIME type (auto-detected from extension if omitted)",
+            },
+          },
+          required: ["file_path", "content"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "workspace_read",
+        description: "Read a file from the workspace.",
+        parameters: {
+          type: "object",
+          properties: {
+            file_path: {
+              type: "string",
+              description: "Relative file path to read",
+            },
+          },
+          required: ["file_path"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "workspace_list",
+        description: "List all files in the workspace.",
+        parameters: { type: "object", properties: {} },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "workspace_append",
+        description: "Append content to an existing workspace file (creates if not found).",
+        parameters: {
+          type: "object",
+          properties: {
+            file_path: {
+              type: "string",
+              description: "Relative file path",
+            },
+            content: {
+              type: "string",
+              description: "Content to append",
+            },
+          },
+          required: ["file_path", "content"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "workspace_edit",
+        description: "Apply find/replace edits to a workspace file.",
+        parameters: {
+          type: "object",
+          properties: {
+            file_path: {
+              type: "string",
+              description: "Relative file path",
+            },
+            edits: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  find: { type: "string", description: "Text to find" },
+                  replace: { type: "string", description: "Replacement text" },
+                },
+                required: ["find", "replace"],
+              },
+              description: "List of find/replace operations",
+            },
+          },
+          required: ["file_path", "edits"],
+        },
+      },
+    },
+  );
+
+  // ─── Planning tools — deep mode only ──────────────────────
   if (deepMode) {
     tools.push(
       {
@@ -515,108 +629,6 @@ function getToolDefinitions(includeWebSearch: boolean, hasSkills: boolean = fals
           description:
             "Read the current planning checklist for this conversation.",
           parameters: { type: "object", properties: {} },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "workspace_write",
-          description:
-            "Write a text file to the workspace. Use this to save analysis results, summaries, reports, drafts, or any artifacts you create.",
-          parameters: {
-            type: "object",
-            properties: {
-              file_path: {
-                type: "string",
-                description:
-                  "Relative file path (e.g. 'summary.md', 'data/analysis.json')",
-              },
-              content: {
-                type: "string",
-                description: "File content to write",
-              },
-              content_type: {
-                type: "string",
-                description: "MIME type (auto-detected from extension if omitted)",
-              },
-            },
-            required: ["file_path", "content"],
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "workspace_read",
-          description: "Read a file from the workspace.",
-          parameters: {
-            type: "object",
-            properties: {
-              file_path: {
-                type: "string",
-                description: "Relative file path to read",
-              },
-            },
-            required: ["file_path"],
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "workspace_list",
-          description: "List all files in the workspace.",
-          parameters: { type: "object", properties: {} },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "workspace_append",
-          description: "Append content to an existing workspace file (creates if not found).",
-          parameters: {
-            type: "object",
-            properties: {
-              file_path: {
-                type: "string",
-                description: "Relative file path",
-              },
-              content: {
-                type: "string",
-                description: "Content to append",
-              },
-            },
-            required: ["file_path", "content"],
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "workspace_edit",
-          description: "Apply find/replace edits to a workspace file.",
-          parameters: {
-            type: "object",
-            properties: {
-              file_path: {
-                type: "string",
-                description: "Relative file path",
-              },
-              edits: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    find: { type: "string", description: "Text to find" },
-                    replace: { type: "string", description: "Replacement text" },
-                  },
-                  required: ["find", "replace"],
-                },
-                description: "List of find/replace operations",
-              },
-            },
-            required: ["file_path", "edits"],
-          },
         },
       },
     );
