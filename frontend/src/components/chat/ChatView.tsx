@@ -622,37 +622,6 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
 
   const hasContent = conversation.length > 0 || waiting || error
 
-  // Empty state - show centered welcome with integrated input
-  if (!hasContent) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center animate-fade-in">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-semibold tracking-tight mb-2">What can I help with?</h1>
-          <p className="text-muted-foreground">Start a conversation to explore your documents</p>
-        </div>
-        <form onSubmit={handleSubmit} className="w-full max-w-xl px-4">
-          <div className="relative focus-glow rounded-full">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask anything..."
-              disabled={sending}
-              className="h-12 rounded-full pl-5 pr-12 text-base bg-surface-2 border-border/50 focus:border-primary/50 transition-colors"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full h-9 w-9 bg-primary hover:bg-primary/90 transition-all duration-200 btn-press"
-              disabled={!input.trim() || sending}
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </form>
-      </div>
-    )
-  }
-
   const workspaceFiles = (dbWorkspaceFiles ?? []) as WorkspaceFile[]
   const showRightSidebar = planTodos.length > 0 || workspaceFiles.length > 0
 
@@ -663,6 +632,14 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-8">
             <div className="space-y-6">
+              {/* Empty state — welcome text */}
+              {!hasContent && (
+                <div className="flex flex-col items-center justify-center pt-32 animate-fade-in">
+                  <h1 className="text-3xl font-semibold tracking-tight mb-2">What can I help with?</h1>
+                  <p className="text-muted-foreground">Start a conversation to explore your documents</p>
+                </div>
+              )}
+
               {conversation.map((item, index) => {
                 if (item.type === 'user') {
                   return (

@@ -1,13 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from 'convex/react'
 import { UserButton } from '@clerk/clerk-react'
-import { Send, Settings } from 'lucide-react'
+import { Settings } from 'lucide-react'
 import { ThreadList } from '@/components/chat/ThreadList'
 import { ChatView } from '@/components/chat/ChatView'
 import { OrgSwitcher } from '@/components/OrgSwitcher'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { useOrg } from '@/hooks/useOrg'
 import { api } from '../../convex/_generated/api'
 import logo from '/logo-brd.jpg'
@@ -15,36 +13,29 @@ import logo from '/logo-brd.jpg'
 export function ChatPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
   const [initialMessage, setInitialMessage] = useState<string | undefined>(undefined)
-  const [welcomeInput, setWelcomeInput] = useState('')
-  const [creating, setCreating] = useState(false)
+  const autoCreatedRef = useRef(false)
   const navigate = useNavigate()
   const createThread = useMutation(api.chat.mutations.createThread)
   const { activeOrgId } = useOrg()
 
+  // Auto-create a thread when none is selected so ChatView always renders
+  useEffect(() => {
+    if (!selectedThreadId && activeOrgId && !autoCreatedRef.current) {
+      autoCreatedRef.current = true
+      createThread({ orgId: activeOrgId, title: 'New Chat' }).then((newThread) => {
+        if (newThread) {
+          setSelectedThreadId(String(newThread._id))
+        }
+        autoCreatedRef.current = false
+      }).catch(() => {
+        autoCreatedRef.current = false
+      })
+    }
+  }, [selectedThreadId, activeOrgId])
+
   const handleSelectThread = (threadId: string) => {
     setSelectedThreadId(threadId)
     setInitialMessage(undefined)
-  }
-
-  const handleWelcomeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!welcomeInput.trim() || creating || !activeOrgId) return
-
-    const message = welcomeInput.trim()
-    setCreating(true)
-    try {
-      const title = message.length > 50 ? message.substring(0, 47) + '...' : message
-      const newThread = await createThread({ orgId: activeOrgId, title })
-      if (newThread) {
-        setInitialMessage(message)
-        setSelectedThreadId(String(newThread._id))
-        setWelcomeInput('')
-      }
-    } catch (error) {
-      console.error('Failed to create thread:', error)
-    } finally {
-      setCreating(false)
-    }
   }
 
   return (
@@ -113,30 +104,8 @@ export function ChatPage() {
             initialMessage={initialMessage}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center animate-fade-in">
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-semibold tracking-tight mb-2">What can I help with?</h1>
-              <p className="text-muted-foreground">Start a conversation to explore your documents</p>
-            </div>
-            <form onSubmit={handleWelcomeSubmit} className="w-full max-w-xl px-4">
-              <div className="relative focus-glow rounded-full">
-                <Input
-                  value={welcomeInput}
-                  onChange={(e) => setWelcomeInput(e.target.value)}
-                  placeholder="Ask anything..."
-                  disabled={creating || !activeOrgId}
-                  className="h-12 rounded-full pl-5 pr-12 text-base bg-surface-2 border-border/50 focus:border-primary/50 transition-colors"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full h-9 w-9 bg-primary hover:bg-primary/90 transition-all duration-200 btn-press"
-                  disabled={!welcomeInput.trim() || creating || !activeOrgId}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-            </form>
+          <div className="flex h-full items-center justify-center">
+            <div className="animate-pulse text-muted-foreground text-sm">Starting new chat...</div>
           </div>
         )}
       </div>
