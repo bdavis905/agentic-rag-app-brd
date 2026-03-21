@@ -163,6 +163,54 @@ export default defineSchema({
     .index("by_org_enabled", ["orgId", "enabled"])
     .index("by_org_name", ["orgId", "name"]),
 
+  // ─── Todos (Deep Mode Planning) ───────────────────────────────
+
+  todos: defineTable({
+    threadId: v.id("threads"),
+    orgId: v.optional(v.string()),
+    content: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("in_progress"),
+      v.literal("completed")
+    ),
+    position: v.number(),
+  }).index("by_thread", ["threadId"]),
+
+  // ─── Workspace Files (Per-Thread Agent Artifacts) ────────────
+
+  workspaceFiles: defineTable({
+    threadId: v.id("threads"),
+    orgId: v.optional(v.string()),
+    filePath: v.string(),
+    content: v.optional(v.string()),
+    storageId: v.optional(v.id("_storage")),
+    contentType: v.string(),
+    source: v.string(), // "agent", "user", "harness"
+    sizeBytes: v.number(),
+  })
+    .index("by_thread", ["threadId"])
+    .index("by_thread_path", ["threadId", "filePath"]),
+
+  // ─── Harness Runs (Multi-Phase Workflows) ────────────────────
+
+  harnessRuns: defineTable({
+    threadId: v.id("threads"),
+    orgId: v.optional(v.string()),
+    harnessType: v.string(),
+    status: v.union(
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("paused")
+    ),
+    currentPhase: v.number(),
+    phaseResults: v.optional(v.any()),
+    inputFiles: v.optional(v.array(v.string())),
+    config: v.optional(v.any()),
+    error: v.optional(v.string()),
+  }).index("by_thread", ["threadId"]),
+
   // ─── Google Drive (connection is per-user, files get orgId) ───
 
   googleDriveConnections: defineTable({

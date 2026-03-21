@@ -10,6 +10,8 @@ export interface SendMessageOptions {
   content: string;
   orgId?: string;
   token?: string | null;
+  deepMode?: boolean;
+  harnessMode?: string;
   onTextDelta: (text: string) => void;
   onDone: () => void;
   onError: (error: string) => void;
@@ -30,7 +32,25 @@ export interface SendMessageOptions {
   onExplorerComplete?: (findings: string) => void;
   onExplorerError?: (error: string) => void;
   onSkillActivated?: (skillId: string, skillName: string) => void;
+  onCodeExecutionStart?: (codePreview: string) => void;
+  onCodeExecutionComplete?: (result: {
+    stdout: string;
+    stderr: string;
+    files: Array<{ name: string; url: string; size: number }>;
+    has_chart: boolean;
+    chart_png: string | null;
+  }) => void;
+  onCodeExecutionError?: (error: string) => void;
   onThreadTitle?: (title: string) => void;
+  // Deep mode events
+  onPlanUpdate?: (todos: Array<{ content: string; status: string; position: number }>) => void;
+  onWorkspaceFileWritten?: (file: { file_path: string; content_type: string; size_bytes: number; source: string }) => void;
+  // Harness events
+  onHarnessPhaseStart?: (phaseIndex: number, phaseName: string, phaseDescription: string) => void;
+  onHarnessPhaseComplete?: (phaseIndex: number, phaseName: string, resultSummary: string, resultMarkdown?: string) => void;
+  onHarnessPhaseError?: (phaseIndex: number, phaseName: string, error: string) => void;
+  onHarnessComplete?: (harnessType: string, overallResult: any) => void;
+  onHarnessBatchProgress?: (phaseIndex: number, processed: number, total: number) => void;
   signal?: AbortSignal;
 }
 
@@ -46,6 +66,8 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
     content,
     orgId,
     token,
+    deepMode,
+    harnessMode,
     onTextDelta,
     onDone,
     onError,
@@ -62,7 +84,17 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
     onExplorerComplete,
     onExplorerError,
     onSkillActivated,
+    onCodeExecutionStart,
+    onCodeExecutionComplete,
+    onCodeExecutionError,
     onThreadTitle,
+    onPlanUpdate,
+    onWorkspaceFileWritten,
+    onHarnessPhaseStart,
+    onHarnessPhaseComplete,
+    onHarnessPhaseError,
+    onHarnessComplete,
+    onHarnessBatchProgress,
     signal,
   } = options;
 
@@ -76,7 +108,13 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ threadId, content, orgId }),
+      body: JSON.stringify({
+        threadId,
+        content,
+        orgId,
+        deepMode: deepMode ?? false,
+        ...(harnessMode ? { harnessMode } : {}),
+      }),
       signal,
     });
   } catch (err) {
@@ -166,8 +204,68 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
           case "skill_activated":
             onSkillActivated?.(event.skill_id ?? "", event.skill_name ?? "");
             break;
+          case "code_execution_start":
+            onCodeExecutionStart?.(event.code_preview ?? "");
+            break;
+          case "code_execution_complete":
+            onCodeExecutionComplete?.({
+              stdout: event.stdout ?? "",
+              stderr: event.stderr ?? "",
+              files: event.files ?? [],
+              has_chart: event.has_chart ?? false,
+              chart_png: event.chart_png ?? null,
+            });
+            break;
+          case "code_execution_error":
+            onCodeExecutionError?.(event.error ?? "");
+            break;
           case "thread_title":
             onThreadTitle?.(event.title ?? "");
+            break;
+          // Deep mode events
+          case "plan_update":
+            onPlanUpdate?.(event.todos ?? []);
+            break;
+          case "workspace_file_written":
+            onWorkspaceFileWritten?.({
+              file_path: event.file_path ?? "",
+              content_type: event.content_type ?? "",
+              size_bytes: event.size_bytes ?? 0,
+              source: event.source ?? "agent",
+            });
+            break;
+          // Harness events
+          case "harness_phase_start":
+            onHarnessPhaseStart?.(
+              event.phase_index ?? 0,
+              event.phase_name ?? "",
+              event.phase_description ?? ""
+            );
+            break;
+          case "harness_phase_complete":
+            onHarnessPhaseComplete?.(
+              event.phase_index ?? 0,
+              event.phase_name ?? "",
+              event.result_summary ?? "",
+              event.result_markdown
+            );
+            break;
+          case "harness_phase_error":
+            onHarnessPhaseError?.(
+              event.phase_index ?? 0,
+              event.phase_name ?? "",
+              event.error ?? ""
+            );
+            break;
+          case "harness_complete":
+            onHarnessComplete?.(event.harness_type ?? "", event.overall_result);
+            break;
+          case "harness_batch_progress":
+            onHarnessBatchProgress?.(
+              event.phase_index ?? 0,
+              event.processed ?? 0,
+              event.total ?? 0
+            );
             break;
           case "done":
             onDone();

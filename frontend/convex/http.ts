@@ -5,6 +5,8 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { executeHarness } from "./harness/engine";
+import { contractReviewHarness } from "./harness/definitions/contractReview";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -116,15 +118,65 @@ Before answering any question, you MUST first develop a retrieval strategy:
    - The explorer has access to all KB tools (ls, tree, grep, glob, read, analyze_document)
    - Great for multi-document research tasks.
 
+10. **execute_code** - Execute Python code in a sandboxed environment (if enabled).
+   - Generate files (PowerPoint, Excel, PDF, charts, CSVs)
+   - Run data analysis and computations
+   - Save output files to /home/user/ and list them in output_filenames
+
 ## Important Guidelines
 - Be thorough: One search is rarely enough for complex questions.
 - Vary your queries: Use synonyms and different phrasings.
 - Always cite: Reference specific documents or web sources.
 - Explain gaps: If you couldn't find information, say so.`;
 
-function getSystemPrompt(customInstructions?: string, skillsCatalog?: string): string {
+function getSystemPrompt(customInstructions?: string, skillsCatalog?: string, hasSandbox?: boolean, deepMode?: boolean): string {
   const persona = customInstructions || DEFAULT_PERSONA;
   let prompt = `${persona}\n\n${TOOL_INSTRUCTIONS}`;
+
+  if (hasSandbox) {
+    prompt += `\n\n## Code Execution (Sandbox)
+
+You have access to \`execute_code\` which runs Python code in a sandboxed environment.
+
+**Use cases:**
+- Generate files: PowerPoint (.pptx), Excel (.xlsx), PDF, CSV, images
+- Create charts and visualizations (matplotlib, seaborn, plotly)
+- Run data analysis (pandas, numpy)
+- Perform calculations or data transformations
+
+**Pre-installed packages:** pandas, numpy, matplotlib, seaborn, openpyxl, python-pptx, fpdf2, pillow, jinja2, pyyaml, tabulate, requests, beautifulsoup4
+
+**Rules:**
+- Save output files to \`/home/user/\` (e.g. \`/home/user/report.pptx\`)
+- List all output filenames in \`output_filenames\` so they get returned as download links
+- For matplotlib: always call \`plt.savefig('/home/user/chart.png')\` AND include the filename in \`output_filenames\`
+- If you need a package not pre-installed, pass it in \`libraries\`
+- Keep code self-contained — each execution starts fresh`;
+  }
+
+  if (deepMode) {
+    prompt += `\n\n## Deep Mode: Planning & Workspace
+
+You are in **Deep Mode**. For complex tasks, you should:
+
+1. **Plan first**: Use \`write_todos\` to create a step-by-step plan before starting work.
+2. **Track progress**: Update todo statuses as you complete each step.
+3. **Save artifacts**: Use \`workspace_write\` to save analysis results, summaries, reports, and drafts.
+4. **Iterate**: Read workspace files with \`workspace_read\` and edit them with \`workspace_edit\`.
+
+### Workspace Tools
+- \`workspace_write(file_path, content)\` — Save/overwrite a file
+- \`workspace_read(file_path)\` — Read a file
+- \`workspace_list()\` — List all workspace files
+- \`workspace_append(file_path, content)\` — Append to a file
+- \`workspace_edit(file_path, edits)\` — Find/replace edits
+
+### Planning Tools
+- \`write_todos(todos)\` — Create/replace the plan checklist
+- \`read_todos()\` — View current plan
+
+**Always plan before executing complex tasks. Save important outputs to the workspace.**`;
+  }
 
   if (skillsCatalog) {
     prompt += `\n\n## Available Skills
@@ -152,7 +204,7 @@ function buildSkillsCatalog(
 
 // ─── Tool Definitions ────────────────────────────────────────────
 
-function getToolDefinitions(includeWebSearch: boolean, hasSkills: boolean = false): any[] {
+function getToolDefinitions(includeWebSearch: boolean, hasSkills: boolean = false, hasSandbox: boolean = false, deepMode: boolean = false): any[] {
   const tools: any[] = [
     {
       type: "function",
@@ -339,6 +391,39 @@ function getToolDefinitions(includeWebSearch: boolean, hasSkills: boolean = fals
     });
   }
 
+  if (hasSandbox) {
+    tools.push({
+      type: "function",
+      function: {
+        name: "execute_code",
+        description:
+          "Execute Python code in a sandboxed environment. Use this to generate files (charts, PowerPoints, Excel, PDFs, CSVs), run data analysis, create visualizations, or perform computations. Output files should be written to /home/user/.",
+        parameters: {
+          type: "object",
+          properties: {
+            code: {
+              type: "string",
+              description: "Python code to execute",
+            },
+            libraries: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "pip packages to install before execution (e.g. ['pandas', 'matplotlib'])",
+            },
+            output_filenames: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "Filenames of output files to return (e.g. ['report.pptx', 'chart.png']). Files should be saved to /home/user/.",
+            },
+          },
+          required: ["code"],
+        },
+      },
+    });
+  }
+
   if (hasSkills) {
     tools.push(
       {
@@ -382,6 +467,155 @@ function getToolDefinitions(includeWebSearch: boolean, hasSkills: boolean = fals
               },
             },
             required: ["name", "description", "instructions"],
+          },
+        },
+      },
+    );
+  }
+
+  if (deepMode) {
+    tools.push(
+      {
+        type: "function",
+        function: {
+          name: "write_todos",
+          description:
+            "Create or replace the planning checklist for this conversation. Use this to outline your approach for complex multi-step tasks. Update statuses as you complete each step.",
+          parameters: {
+            type: "object",
+            properties: {
+              todos: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    content: {
+                      type: "string",
+                      description: "Description of the task/step",
+                    },
+                    status: {
+                      type: "string",
+                      enum: ["pending", "in_progress", "completed"],
+                      description: "Current status (default: pending)",
+                    },
+                  },
+                  required: ["content"],
+                },
+                description: "Ordered list of todos/steps",
+              },
+            },
+            required: ["todos"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "read_todos",
+          description:
+            "Read the current planning checklist for this conversation.",
+          parameters: { type: "object", properties: {} },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "workspace_write",
+          description:
+            "Write a text file to the workspace. Use this to save analysis results, summaries, reports, drafts, or any artifacts you create.",
+          parameters: {
+            type: "object",
+            properties: {
+              file_path: {
+                type: "string",
+                description:
+                  "Relative file path (e.g. 'summary.md', 'data/analysis.json')",
+              },
+              content: {
+                type: "string",
+                description: "File content to write",
+              },
+              content_type: {
+                type: "string",
+                description: "MIME type (auto-detected from extension if omitted)",
+              },
+            },
+            required: ["file_path", "content"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "workspace_read",
+          description: "Read a file from the workspace.",
+          parameters: {
+            type: "object",
+            properties: {
+              file_path: {
+                type: "string",
+                description: "Relative file path to read",
+              },
+            },
+            required: ["file_path"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "workspace_list",
+          description: "List all files in the workspace.",
+          parameters: { type: "object", properties: {} },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "workspace_append",
+          description: "Append content to an existing workspace file (creates if not found).",
+          parameters: {
+            type: "object",
+            properties: {
+              file_path: {
+                type: "string",
+                description: "Relative file path",
+              },
+              content: {
+                type: "string",
+                description: "Content to append",
+              },
+            },
+            required: ["file_path", "content"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "workspace_edit",
+          description: "Apply find/replace edits to a workspace file.",
+          parameters: {
+            type: "object",
+            properties: {
+              file_path: {
+                type: "string",
+                description: "Relative file path",
+              },
+              edits: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    find: { type: "string", description: "Text to find" },
+                    replace: { type: "string", description: "Replacement text" },
+                  },
+                  required: ["find", "replace"],
+                },
+                description: "List of find/replace operations",
+              },
+            },
+            required: ["file_path", "edits"],
           },
         },
       },
@@ -655,6 +889,66 @@ async function executeTool(
     return await runExplorerAgent(ctx, args, userId, emit, llmConfig, orgId);
   }
 
+  if (toolName === "execute_code") {
+    const code = args.code ?? "";
+    if (!code) return "Error: No code provided.";
+
+    emit("code_execution_start", {
+      code_preview: code.length > 200 ? code.slice(0, 200) + "..." : code,
+    });
+
+    try {
+      const result = await ctx.runAction(
+        internal.sandbox.execute.execute,
+        {
+          code,
+          libraries: args.libraries,
+          outputFilenames: args.output_filenames,
+        },
+      );
+
+      if (result.error) {
+        emit("code_execution_error", { error: result.error });
+        return `Code execution failed:\n${result.error}${result.stdout ? `\n\nStdout:\n${result.stdout}` : ""}${result.stderr ? `\n\nStderr:\n${result.stderr}` : ""}`;
+      }
+
+      // Build file download URLs
+      const fileEntries: Array<{ name: string; url: string; size: number }> = [];
+      for (const f of result.files) {
+        const url = await ctx.storage.getUrl(f.storageId);
+        if (url) {
+          fileEntries.push({ name: f.name, url, size: f.size });
+        }
+      }
+
+      emit("code_execution_complete", {
+        stdout: result.stdout,
+        stderr: result.stderr,
+        files: fileEntries,
+        has_chart: !!result.png,
+        chart_png: result.png || null,
+      });
+
+      // Format result for the LLM
+      let output = "";
+      if (result.stdout) output += `Stdout:\n${result.stdout}\n`;
+      if (result.stderr) output += `Stderr:\n${result.stderr}\n`;
+      if (fileEntries.length > 0) {
+        output += "\nGenerated files:\n";
+        for (const f of fileEntries) {
+          output += `- ${f.name} (${(f.size / 1024).toFixed(1)} KB): ${f.url}\n`;
+        }
+      }
+      if (result.png) {
+        output += "\n[Chart/visualization was generated and displayed to the user]\n";
+      }
+      return output || "Code executed successfully (no output).";
+    } catch (e: any) {
+      emit("code_execution_error", { error: e.message });
+      return `Sandbox execution error: ${e.message}`;
+    }
+  }
+
   if (toolName === "load_skill") {
     const skillId = args.skill_id;
     if (!skillId) return "Error: No skill_id provided.";
@@ -691,6 +985,201 @@ async function executeTool(
       return `Skill "${name}" saved successfully (ID: ${skillId}).`;
     } catch (e: any) {
       return `Error saving skill: ${e.message}`;
+    }
+  }
+
+  // ─── Todo Tools ──────────────────────────────────────────────
+
+  if (toolName === "write_todos") {
+    const todosInput = (args.todos ?? []).map((t: any) => ({
+      content: t.content ?? "",
+      status: t.status ?? "pending",
+    }));
+
+    if (todosInput.length === 0) return "Error: No todos provided.";
+
+    const threadIdForTodos = (ctx as any).__threadId;
+    if (!threadIdForTodos) return "Error: No thread context for todos.";
+
+    try {
+      const result = await ctx.runMutation(
+        internal.todos.internals.writeTodos,
+        {
+          threadId: threadIdForTodos,
+          orgId: orgId,
+          todos: todosInput,
+        },
+      );
+
+      // Emit plan update to frontend
+      emit("plan_update", {
+        todos: todosInput.map((t: any, i: number) => ({
+          content: t.content,
+          status: t.status,
+          position: i,
+        })),
+      });
+
+      return `Plan updated with ${result.length} items.`;
+    } catch (e: any) {
+      return `Error writing todos: ${e.message}`;
+    }
+  }
+
+  if (toolName === "read_todos") {
+    const threadIdForTodos = (ctx as any).__threadId;
+    if (!threadIdForTodos) return "No plan items found.";
+
+    try {
+      const todos = await ctx.runQuery(
+        internal.todos.internals.getTodos,
+        { threadId: threadIdForTodos },
+      );
+
+      if (todos.length === 0) return "No plan items found.";
+
+      return todos
+        .map(
+          (t: any, i: number) =>
+            `${i + 1}. [${t.status}] ${t.content}`,
+        )
+        .join("\n");
+    } catch (e: any) {
+      return `Error reading todos: ${e.message}`;
+    }
+  }
+
+  // ─── Workspace Tools ───────────────────────────────────────────
+
+  if (toolName === "workspace_write") {
+    const filePath = args.file_path ?? "";
+    const content = args.content ?? "";
+    if (!filePath) return "Error: No file_path provided.";
+
+    const threadIdForWs = (ctx as any).__threadId;
+    if (!threadIdForWs) return "Error: No thread context for workspace.";
+
+    try {
+      const result = await ctx.runMutation(
+        internal.workspace.internals.writeFile,
+        {
+          threadId: threadIdForWs,
+          orgId,
+          filePath,
+          content,
+          contentType: args.content_type,
+          source: "agent",
+        },
+      );
+
+      emit("workspace_file_written", {
+        file_path: result.filePath,
+        content_type: result.contentType,
+        size_bytes: result.sizeBytes,
+        source: "agent",
+      });
+
+      return `File written: ${result.filePath} (${result.sizeBytes} bytes)`;
+    } catch (e: any) {
+      return `Error writing file: ${e.message}`;
+    }
+  }
+
+  if (toolName === "workspace_read") {
+    const filePath = args.file_path ?? "";
+    if (!filePath) return "Error: No file_path provided.";
+
+    const threadIdForWs = (ctx as any).__threadId;
+    if (!threadIdForWs) return "Error: No thread context for workspace.";
+
+    try {
+      const content = await ctx.runQuery(
+        internal.workspace.internals.readFile,
+        { threadId: threadIdForWs, filePath },
+      );
+
+      if (content === null) return `File not found: ${filePath}`;
+      return content;
+    } catch (e: any) {
+      return `Error reading file: ${e.message}`;
+    }
+  }
+
+  if (toolName === "workspace_list") {
+    const threadIdForWs = (ctx as any).__threadId;
+    if (!threadIdForWs) return "Workspace is empty.";
+
+    try {
+      const files = await ctx.runQuery(
+        internal.workspace.internals.listFiles,
+        { threadId: threadIdForWs },
+      );
+
+      if (files.length === 0) return "Workspace is empty.";
+
+      return files
+        .map(
+          (f: any) =>
+            `- ${f.filePath} (${f.contentType}, ${f.sizeBytes} bytes, source: ${f.source})`,
+        )
+        .join("\n");
+    } catch (e: any) {
+      return `Error listing files: ${e.message}`;
+    }
+  }
+
+  if (toolName === "workspace_append") {
+    const filePath = args.file_path ?? "";
+    const content = args.content ?? "";
+    if (!filePath) return "Error: No file_path provided.";
+
+    const threadIdForWs = (ctx as any).__threadId;
+    if (!threadIdForWs) return "Error: No thread context for workspace.";
+
+    try {
+      const result = await ctx.runMutation(
+        internal.workspace.internals.appendFile,
+        { threadId: threadIdForWs, orgId, filePath, content },
+      );
+
+      emit("workspace_file_written", {
+        file_path: result.filePath,
+        content_type: "text/plain",
+        size_bytes: result.sizeBytes,
+        source: "agent",
+      });
+
+      return `Appended to ${result.filePath} (${result.sizeBytes} bytes total)`;
+    } catch (e: any) {
+      return `Error appending to file: ${e.message}`;
+    }
+  }
+
+  if (toolName === "workspace_edit") {
+    const filePath = args.file_path ?? "";
+    const edits = args.edits ?? [];
+    if (!filePath) return "Error: No file_path provided.";
+    if (edits.length === 0) return "Error: No edits provided.";
+
+    const threadIdForWs = (ctx as any).__threadId;
+    if (!threadIdForWs) return "Error: No thread context for workspace.";
+
+    try {
+      const result = await ctx.runMutation(
+        internal.workspace.internals.editFile,
+        { threadId: threadIdForWs, filePath, edits },
+      );
+
+      emit("workspace_file_written", {
+        file_path: result.filePath,
+        content_type: "text/plain",
+        size_bytes: result.sizeBytes,
+        source: "agent",
+      });
+
+      return `Edited ${result.filePath}: ${edits.length} edit(s) applied (${result.sizeBytes} bytes)`;
+    } catch (e: any) {
+      return `Error editing file: ${e.message}`;
     }
   }
 
@@ -1145,9 +1634,22 @@ function getResultSummary(toolName: string, result: string): string {
     return count > 0 ? `${count} result${count !== 1 ? "s" : ""}` : "No results";
   }
   if (toolName === "analyze_document") return "Analysis complete";
+  if (toolName === "execute_code") {
+    if (result.includes("failed") || result.includes("error")) return "Execution failed";
+    const fileCount = (result.match(/^- /gm) || []).length;
+    if (fileCount > 0) return `${fileCount} file${fileCount !== 1 ? "s" : ""} generated`;
+    return "Code executed";
+  }
   if (toolName === "explore_knowledge_base") return "Exploration complete";
   if (toolName === "load_skill") return "Skill loaded";
   if (toolName === "save_skill") return "Skill saved";
+  if (toolName === "write_todos") return "Plan updated";
+  if (toolName === "read_todos") return "Plan loaded";
+  if (toolName === "workspace_write") return "File saved";
+  if (toolName === "workspace_read") return "File read";
+  if (toolName === "workspace_list") return "Files listed";
+  if (toolName === "workspace_append") return "Content appended";
+  if (toolName === "workspace_edit") return "File edited";
   return "Complete";
 }
 
@@ -1169,8 +1671,13 @@ async function runChatLoop(params: {
   threadId: any;
   content: string;
   emit: (type: string, data?: Record<string, any>) => void;
+  deepMode?: boolean;
+  harnessMode?: string;
 }): Promise<void> {
-  const { ctx, userId, orgId, threadId, content, emit } = params;
+  const { ctx, userId, orgId, threadId, content, emit, deepMode = false, harnessMode } = params;
+
+  // Attach threadId to ctx so executeTool can access it for todos/workspace
+  (ctx as any).__threadId = threadId;
 
   // Store user message
   await ctx.runMutation(internal.chat.internals.addMessage, {
@@ -1201,6 +1708,67 @@ async function runChatLoop(params: {
   const llmBaseUrl = settings?.llmBaseUrl || process.env.LLM_BASE_URL || null;
   const llmConfig = { apiKey, baseUrl: llmBaseUrl, model: llmModel };
 
+  // ─── Harness Mode: Route to harness engine instead of chat loop ───
+  if (harnessMode) {
+    const harnessDefinitions: Record<string, any> = {
+      contract_review: contractReviewHarness,
+    };
+
+    const definition = harnessDefinitions[harnessMode];
+    if (!definition) {
+      emit("error", { error: `Unknown harness type: ${harnessMode}` });
+      emit("done");
+      return;
+    }
+
+    // Write the user's message to workspace as the input document
+    await ctx.runMutation(internal.workspace.internals.writeFile, {
+      threadId,
+      orgId,
+      filePath: "input.txt",
+      content,
+      contentType: "text/plain",
+      source: "user",
+    });
+    emit("workspace_file_written", {
+      file_path: "input.txt",
+      content_type: "text/plain",
+      size_bytes: new TextEncoder().encode(content).length,
+      source: "user",
+    });
+
+    await executeHarness(
+      { ctx, threadId, orgId, userId, apiKey, baseUrl: llmBaseUrl, model: llmModel, emit },
+      definition,
+      ["input.txt"],
+    );
+
+    // Store a summary message
+    await ctx.runMutation(internal.chat.internals.addMessage, {
+      threadId,
+      role: "assistant",
+      content: `Harness workflow "${definition.name}" completed. Check the workspace panel for detailed results.`,
+    });
+
+    // Generate title for new threads
+    const messageCount = await ctx.runQuery(
+      internal.chat.internals.getMessageCount,
+      { threadId },
+    );
+    if (messageCount <= 2) {
+      try {
+        const title = await generateTitle(content, `${definition.name} analysis`, apiKey, llmBaseUrl, llmModel);
+        if (title) {
+          await ctx.runMutation(internal.chat.internals.updateThreadTitle, { threadId, title });
+          emit("thread_title", { title });
+        }
+      } catch { /* Title generation failure must never break chat */ }
+    }
+
+    emit("done");
+    return;
+  }
+
   const webSearchEnabled =
     (settings?.webSearchEnabled ?? false) &&
     !!(settings?.webSearchApiKey || process.env.TAVILY_API_KEY);
@@ -1215,8 +1783,9 @@ async function runChatLoop(params: {
     skillsCatalog = buildSkillsCatalog(enabledSkills);
   }
   const hasSkills = skillsCatalog.length > 0;
+  const hasSandbox = !!process.env.E2B_API_KEY;
 
-  const tools = getToolDefinitions(webSearchEnabled, hasSkills);
+  const tools = getToolDefinitions(webSearchEnabled, hasSkills, hasSandbox, deepMode);
 
   // Check if this is the first exchange (for title generation)
   const messageCount = await ctx.runQuery(
@@ -1227,7 +1796,7 @@ async function runChatLoop(params: {
 
   let fullResponse = "";
   const currentMessages = [
-    { role: "system", content: getSystemPrompt(settings?.chatSystemPrompt || undefined, skillsCatalog || undefined) },
+    { role: "system", content: getSystemPrompt(settings?.chatSystemPrompt || undefined, skillsCatalog || undefined, hasSandbox, deepMode) },
     ...messages,
   ];
   const allToolCalls: any[] = [];
@@ -1385,14 +1954,14 @@ const chat = httpAction(async (ctx, request) => {
   }
   const userId = identity.subject;
 
-  let body: { threadId: string; content: string; orgId?: string };
+  let body: { threadId: string; content: string; orgId?: string; deepMode?: boolean; harnessMode?: string };
   try {
     body = await request.json();
   } catch {
     return jsonResponse({ error: "Invalid request body" }, 400);
   }
 
-  const { threadId, content, orgId } = body;
+  const { threadId, content, orgId, deepMode, harnessMode } = body;
   if (!threadId || !content) {
     return jsonResponse({ error: "threadId and content are required" }, 400);
   }
@@ -1420,6 +1989,8 @@ const chat = httpAction(async (ctx, request) => {
       threadId: threadId as any,
       content,
       emit,
+      deepMode: deepMode ?? false,
+      harnessMode,
     }),
   );
 });

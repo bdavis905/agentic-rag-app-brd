@@ -14,6 +14,7 @@ import type * as apiKeys_queries from "../apiKeys/queries.js";
 import type * as chat_internals from "../chat/internals.js";
 import type * as chat_mutations from "../chat/mutations.js";
 import type * as chat_queries from "../chat/queries.js";
+import type * as debug from "../debug.js";
 import type * as documents_actions from "../documents/actions.js";
 import type * as documents_internals from "../documents/internals.js";
 import type * as documents_mutations from "../documents/mutations.js";
@@ -23,6 +24,10 @@ import type * as folders_queries from "../folders/queries.js";
 import type * as googleDrive_actions from "../googleDrive/actions.js";
 import type * as googleDrive_internals from "../googleDrive/internals.js";
 import type * as googleDrive_queries from "../googleDrive/queries.js";
+import type * as harness_definitions_contractReview from "../harness/definitions/contractReview.js";
+import type * as harness_engine from "../harness/engine.js";
+import type * as harness_internals from "../harness/internals.js";
+import type * as harness_types from "../harness/types.js";
 import type * as http from "../http.js";
 import type * as ingestion_chunking from "../ingestion/chunking.js";
 import type * as ingestion_embedding from "../ingestion/embedding.js";
@@ -32,10 +37,14 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as migrations_backfillMemberEmails from "../migrations/backfillMemberEmails.js";
 import type * as migrations_backfillMemberEmailsHelper from "../migrations/backfillMemberEmailsHelper.js";
 import type * as migrations_backfillOrgs from "../migrations/backfillOrgs.js";
+import type * as migrations_seedProdSettings from "../migrations/seedProdSettings.js";
+import type * as migrations_seedProdSettingsMutation from "../migrations/seedProdSettingsMutation.js";
 import type * as navigation_internals from "../navigation/internals.js";
 import type * as organizations_actions from "../organizations/actions.js";
 import type * as organizations_mutations from "../organizations/mutations.js";
 import type * as organizations_queries from "../organizations/queries.js";
+import type * as sandbox_execute from "../sandbox/execute.js";
+import type * as sandbox_queries from "../sandbox/queries.js";
 import type * as search_actions from "../search/actions.js";
 import type * as search_internals from "../search/internals.js";
 import type * as settings_actions from "../settings/actions.js";
@@ -43,6 +52,10 @@ import type * as settings_mutations from "../settings/mutations.js";
 import type * as settings_queries from "../settings/queries.js";
 import type * as skills_mutations from "../skills/mutations.js";
 import type * as skills_queries from "../skills/queries.js";
+import type * as todos_internals from "../todos/internals.js";
+import type * as todos_queries from "../todos/queries.js";
+import type * as workspace_internals from "../workspace/internals.js";
+import type * as workspace_queries from "../workspace/queries.js";
 
 import type {
   ApiFromModules,
@@ -57,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   "chat/internals": typeof chat_internals;
   "chat/mutations": typeof chat_mutations;
   "chat/queries": typeof chat_queries;
+  debug: typeof debug;
   "documents/actions": typeof documents_actions;
   "documents/internals": typeof documents_internals;
   "documents/mutations": typeof documents_mutations;
@@ -66,6 +80,10 @@ declare const fullApi: ApiFromModules<{
   "googleDrive/actions": typeof googleDrive_actions;
   "googleDrive/internals": typeof googleDrive_internals;
   "googleDrive/queries": typeof googleDrive_queries;
+  "harness/definitions/contractReview": typeof harness_definitions_contractReview;
+  "harness/engine": typeof harness_engine;
+  "harness/internals": typeof harness_internals;
+  "harness/types": typeof harness_types;
   http: typeof http;
   "ingestion/chunking": typeof ingestion_chunking;
   "ingestion/embedding": typeof ingestion_embedding;
@@ -75,10 +93,14 @@ declare const fullApi: ApiFromModules<{
   "migrations/backfillMemberEmails": typeof migrations_backfillMemberEmails;
   "migrations/backfillMemberEmailsHelper": typeof migrations_backfillMemberEmailsHelper;
   "migrations/backfillOrgs": typeof migrations_backfillOrgs;
+  "migrations/seedProdSettings": typeof migrations_seedProdSettings;
+  "migrations/seedProdSettingsMutation": typeof migrations_seedProdSettingsMutation;
   "navigation/internals": typeof navigation_internals;
   "organizations/actions": typeof organizations_actions;
   "organizations/mutations": typeof organizations_mutations;
   "organizations/queries": typeof organizations_queries;
+  "sandbox/execute": typeof sandbox_execute;
+  "sandbox/queries": typeof sandbox_queries;
   "search/actions": typeof search_actions;
   "search/internals": typeof search_internals;
   "settings/actions": typeof settings_actions;
@@ -86,6 +108,10 @@ declare const fullApi: ApiFromModules<{
   "settings/queries": typeof settings_queries;
   "skills/mutations": typeof skills_mutations;
   "skills/queries": typeof skills_queries;
+  "todos/internals": typeof todos_internals;
+  "todos/queries": typeof todos_queries;
+  "workspace/internals": typeof workspace_internals;
+  "workspace/queries": typeof workspace_queries;
 }>;
 
 /**

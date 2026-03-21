@@ -10,9 +10,16 @@ import { sendMessage } from '@/lib/api'
 import { StepsPanel } from './StepsPanel'
 import { SubAgentPanel } from './SubAgentPanel'
 import { ThinkingPanel } from './ThinkingPanel'
+import { CodeExecutionPanel } from './CodeExecutionPanel'
+import type { CodeExecutionState } from './CodeExecutionPanel'
+import { PlanPanel } from './PlanPanel'
+import { WorkspacePanel } from './WorkspacePanel'
+import { FileViewer } from './FileViewer'
+import { DeepModeSelector, type DeepModeType } from './DeepModeSelector'
+import { HarnessPhasePanel } from './HarnessPhasePanel'
 import { useOrg } from '@/hooks/useOrg'
 import { api } from '../../../convex/_generated/api'
-import type { ToolCallInfo, SubAgentState } from '@/types'
+import type { ToolCallInfo, SubAgentState, TodoItem, WorkspaceFile, HarnessPhaseState } from '@/types'
 
 interface ChatViewProps {
   threadId: string
@@ -26,6 +33,8 @@ type ConversationItem =
   | { type: 'thinking'; id: string; content: string; isStreaming: boolean }
   | { type: 'tools'; id: string; toolCalls: ToolCallInfo[] }
   | { type: 'subagent'; id: string; state: SubAgentState }
+  | { type: 'code_execution'; id: string; state: CodeExecutionState }
+  | { type: 'harness'; id: string; phases: HarnessPhaseState[] }
 
 // Parsed segment from text with think tags
 type ParsedSegment =
@@ -93,6 +102,9 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
   const [sending, setSending] = useState(false)
   const [waiting, setWaiting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deepMode, setDeepMode] = useState<DeepModeType>(null)
+  const [planTodos, setPlanTodos] = useState<TodoItem[]>([])
+  const [viewingFile, setViewingFile] = useState<WorkspaceFile | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const initialMessageSentRef = useRef(false)
@@ -107,6 +119,23 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
     api.chat.queries.getMessages,
     activeOrgId ? { orgId: activeOrgId, threadId: threadId as any } : "skip"
   )
+
+  // Reactive queries for deep mode panels
+  const dbTodos = useQuery(
+    api.todos.queries.getTodos,
+    activeOrgId ? { threadId: threadId as any, orgId: activeOrgId } : "skip"
+  )
+  const dbWorkspaceFiles = useQuery(
+    api.workspace.queries.listFiles,
+    activeOrgId ? { threadId: threadId as any, orgId: activeOrgId } : "skip"
+  )
+
+  // Sync DB todos to state (SSE updates during streaming, DB persists)
+  useEffect(() => {
+    if (dbTodos && !sending) {
+      setPlanTodos(dbTodos as TodoItem[])
+    }
+  }, [dbTodos, sending])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -184,6 +213,92 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
         content: userMessage,
         orgId: activeOrgId ?? undefined,
         token,
+        deepMode: deepMode === 'deep' || deepMode === 'contract_review',
+        harnessMode: deepMode === 'contract_review' ? 'contract_review' : undefined,
+        onHarnessPhaseStart: (phaseIndex, phaseName, phaseDescription) => {
+          setWaiting(false)
+          const harnessId = `${responseIdRef.current}-harness`
+          setConversation(prev => {
+            const existing = prev.find(item => item.id === harnessId)
+            if (existing && existing.type === 'harness') {
+              const newPhase: HarnessPhaseState = {
+                phaseIndex, phaseName, phaseDescription,
+                status: 'running', resultMarkdown: '', toolCalls: [],
+              }
+              return prev.map(item =>
+                item.id === harnessId && item.type === 'harness'
+                  ? { ...item, phases: [...item.phases, newPhase] }
+                  : item
+              )
+            }
+            return [...prev, {
+              type: 'harness' as const,
+              id: harnessId,
+              phases: [{
+                phaseIndex, phaseName, phaseDescription,
+                status: 'running' as const, resultMarkdown: '', toolCalls: [],
+              }],
+            }]
+          })
+        },
+        onHarnessPhaseComplete: (phaseIndex, _phaseName, _resultSummary, resultMarkdown) => {
+          const harnessId = `${responseIdRef.current}-harness`
+          setConversation(prev =>
+            prev.map(item => {
+              if (item.id !== harnessId || item.type !== 'harness') return item
+              return {
+                ...item,
+                phases: item.phases.map(p =>
+                  p.phaseIndex === phaseIndex
+                    ? { ...p, status: 'completed' as const, resultMarkdown: resultMarkdown ?? '' }
+                    : p
+                ),
+              }
+            })
+          )
+        },
+        onHarnessPhaseError: (phaseIndex, _phaseName, error) => {
+          const harnessId = `${responseIdRef.current}-harness`
+          setConversation(prev =>
+            prev.map(item => {
+              if (item.id !== harnessId || item.type !== 'harness') return item
+              return {
+                ...item,
+                phases: item.phases.map(p =>
+                  p.phaseIndex === phaseIndex
+                    ? { ...p, status: 'error' as const, error }
+                    : p
+                ),
+              }
+            })
+          )
+        },
+        onHarnessBatchProgress: (phaseIndex, processed, total) => {
+          const harnessId = `${responseIdRef.current}-harness`
+          setConversation(prev =>
+            prev.map(item => {
+              if (item.id !== harnessId || item.type !== 'harness') return item
+              return {
+                ...item,
+                phases: item.phases.map(p =>
+                  p.phaseIndex === phaseIndex
+                    ? { ...p, batchProgress: { current: 0, total, processed } }
+                    : p
+                ),
+              }
+            })
+          )
+        },
+        onPlanUpdate: (todos) => {
+          setPlanTodos(todos.map((t, i) => ({
+            content: t.content,
+            status: t.status as TodoItem['status'],
+            position: t.position ?? i,
+          })))
+        },
+        onWorkspaceFileWritten: () => {
+          // Workspace files are reactively updated via useQuery
+        },
         onTextDelta: (text) => {
           setWaiting(false)
           rawTextBufferRef.current += text
@@ -409,6 +524,53 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
             })
           })
         },
+        onCodeExecutionStart: (codePreview) => {
+          const execId = `${responseIdRef.current}-code-exec`
+          setConversation(prev => {
+            return [...prev, {
+              type: 'code_execution' as const,
+              id: execId,
+              state: {
+                status: 'running' as const,
+                codePreview,
+              }
+            }]
+          })
+        },
+        onCodeExecutionComplete: (result) => {
+          setConversation(prev => {
+            return prev.map(item => {
+              if (item.type !== 'code_execution') return item
+              return {
+                ...item,
+                state: {
+                  ...item.state,
+                  status: 'completed' as const,
+                  stdout: result.stdout || undefined,
+                  stderr: result.stderr || undefined,
+                  files: result.files,
+                  hasChart: result.has_chart,
+                  chartPng: result.chart_png,
+                }
+              }
+            })
+          })
+        },
+        onCodeExecutionError: (error) => {
+          setConversation(prev => {
+            return prev.map(item => {
+              if (item.type !== 'code_execution') return item
+              return {
+                ...item,
+                state: {
+                  ...item.state,
+                  status: 'error' as const,
+                  error,
+                }
+              }
+            })
+          })
+        },
         onThreadTitle: () => {
           // Title already updated server-side; ThreadList picks up via reactive query
         },
@@ -491,8 +653,12 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
     )
   }
 
+  const workspaceFiles = (dbWorkspaceFiles ?? []) as WorkspaceFile[]
+  const showRightSidebar = planTodos.length > 0 || workspaceFiles.length > 0
+
   return (
     <div className="flex h-full flex-col">
+      <div className="flex flex-1 overflow-hidden">
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-8">
@@ -531,6 +697,12 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
                 if (item.type === 'subagent') {
                   return <SubAgentPanel key={item.id} subAgent={item.state} />
                 }
+                if (item.type === 'code_execution') {
+                  return <CodeExecutionPanel key={item.id} execution={item.state} />
+                }
+                if (item.type === 'harness') {
+                  return <HarnessPhasePanel key={item.id} phases={item.phases} />
+                }
                 return null
               })}
 
@@ -558,6 +730,30 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
           </div>
       </div>
 
+      {/* Right sidebar — Plan + Workspace */}
+      {showRightSidebar && (
+        <div className="w-72 border-l border-border/50 overflow-y-auto p-3 space-y-3 shrink-0">
+          {planTodos.length > 0 && <PlanPanel todos={planTodos} />}
+          {workspaceFiles.length > 0 && (
+            <WorkspacePanel
+              files={workspaceFiles}
+              onFileClick={(file) => setViewingFile(file)}
+            />
+          )}
+        </div>
+      )}
+      </div>
+
+      {/* File Viewer Modal */}
+      {viewingFile && (
+        <FileViewer
+          file={viewingFile}
+          threadId={threadId}
+          orgId={activeOrgId ?? undefined}
+          onClose={() => setViewingFile(null)}
+        />
+      )}
+
       {/* Input area */}
       <div className="border-t border-border/50 bg-surface-1">
         <div className="mx-auto max-w-3xl px-4 py-4">
@@ -567,9 +763,14 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask anything..."
               disabled={sending}
-              className="h-12 rounded-full pl-5 pr-24 text-base bg-background border-border/50 focus:border-primary/50 transition-colors"
+              className="h-12 rounded-full pl-5 pr-32 text-base bg-background border-border/50 focus:border-primary/50 transition-colors"
             />
-            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-1">
+            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              <DeepModeSelector
+                mode={deepMode}
+                onModeChange={setDeepMode}
+                disabled={sending}
+              />
               {sending ? (
                 <Button
                   type="button"

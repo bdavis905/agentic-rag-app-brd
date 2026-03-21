@@ -65,3 +65,69 @@ export interface SubAgentState {
   reasoning: string;
   status: "running" | "completed" | "error";
 }
+
+// ─── Deep Mode Types ──────────────────────────────────────────
+
+export interface TodoItem {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+  position: number;
+}
+
+export interface WorkspaceFile {
+  id: string;
+  filePath: string;
+  contentType: string;
+  source: "agent" | "user" | "harness";
+  sizeBytes: number;
+  storageId: string | null;
+}
+
+// ─── Harness Types ────────────────────────────────────────────
+
+export interface HarnessToolCall {
+  toolCallId?: string;
+  toolName: string;
+  arguments: string;
+  result?: string;
+  status: "running" | "completed";
+}
+
+export interface HarnessSubAgent {
+  subAgentId: string;
+  clauseRef: string;
+  description: string;
+  status: "running" | "completed" | "error";
+  toolCalls: HarnessToolCall[];
+  result?: string;
+}
+
+export interface HarnessBatchProgress {
+  current: number;
+  total: number;
+  processed: number;
+}
+
+export interface HarnessPhaseState {
+  phaseIndex: number;
+  phaseName: string;
+  phaseDescription: string;
+  status: "running" | "completed" | "error";
+  resultMarkdown: string;
+  toolCalls: HarnessToolCall[];
+  error?: string;
+  agentRound?: number;
+  agentMaxRounds?: number;
+  subAgents?: HarnessSubAgent[];
+  batchProgress?: HarnessBatchProgress;
+  isHumanInput?: boolean;
+}
+
+export interface HarnessRun {
+  id: string;
+  threadId: string;
+  harnessType: string;
+  status: "running" | "completed" | "failed" | "paused";
+  currentPhase: number;
+  phaseResults?: Record<string, any>;
+}
