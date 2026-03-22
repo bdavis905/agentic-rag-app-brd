@@ -75,6 +75,7 @@ export function DeepModeSelector({ mode, onModeChange, disabled }: DeepModeSelec
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
         onClick={() => {
           if (mode) {
             onModeChange(null)
@@ -109,6 +110,7 @@ export function DeepModeSelector({ mode, onModeChange, disabled }: DeepModeSelec
             const Icon = m.icon
             return (
               <button
+                type="button"
                 key={m.value ?? 'standard'}
                 onClick={() => {
                   onModeChange(m.value)
