@@ -211,6 +211,19 @@ export default defineSchema({
     error: v.optional(v.string()),
   }).index("by_thread", ["threadId"]),
 
+  // ─── Foundation Docs (Per-Org Persistent Knowledge) ─────────
+
+  foundationDocs: defineTable({
+    orgId: v.string(),
+    docType: v.string(),
+    content: v.string(),
+    sourceBot: v.optional(v.string()),
+    version: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_org_doc", ["orgId", "docType"]),
+
   // ─── Google Drive (connection is per-user, files get orgId) ───
 
   googleDriveConnections: defineTable({

@@ -38,6 +38,10 @@ export interface PhaseDefinition {
   maxRounds?: number;
   /** Override the default model for this phase */
   model?: string;
+  /** Foundation doc types to load from foundationDocs table as additional context */
+  foundationInputs?: string[];
+  /** Foundation docs to save after phase completes (key = output field, docType = storage key) */
+  foundationOutputs?: Array<{ key: string; docType: string }>;
 }
 
 export interface HarnessDefinition {

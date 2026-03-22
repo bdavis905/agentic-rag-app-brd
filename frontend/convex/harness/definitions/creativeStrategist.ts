@@ -339,6 +339,7 @@ If no performance data is found in the document library, return the structure wi
       description: "Map the creative grid and identify untested segments, awareness levels, concepts, and angles",
       type: "llm_single",
       model: "anthropic/claude-opus-4.6",
+      foundationInputs: ["build-a-buyer", "offer-brief"],
       systemPromptTemplate: `You are a creative coverage strategist. You analyze the full creative landscape and identify gaps in ad coverage using the Creative Strategist Flywheel framework.
 
 ## Input Data
@@ -459,6 +460,7 @@ Focus on the TOP 10 gaps. Don't try to fill every cell -- prioritize the highest
       model: "anthropic/claude-opus-4.6",
       tools: [genesisBotTool],
       maxRounds: 8,
+      foundationInputs: ["build-a-buyer", "offer-brief"],
       systemPromptTemplate: `You are a creative brief orchestrator. Your job is to take the top priority gaps from the coverage analysis and generate detailed creative briefs using the Genesis autobrief-bot.
 
 ## Input Data

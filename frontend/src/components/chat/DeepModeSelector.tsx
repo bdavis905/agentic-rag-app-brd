@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { Zap, FileCheck, MessageSquare, Target } from 'lucide-react'
+import { Zap, FileCheck, MessageSquare, Target, Database, Palette } from 'lucide-react'
 
-export type DeepModeType = null | 'deep' | 'contract_review' | 'creative_strategist'
+export type DeepModeType = null | 'deep' | 'contract_review' | 'creative_strategist' | 'foundation_builder' | 'ad_production'
 
 interface DeepModeSelectorProps {
   mode: DeepModeType
@@ -37,6 +37,20 @@ const modes = [
     description: 'Ad strategy, coverage gaps, briefs',
     icon: Target,
     color: 'text-emerald-400',
+  },
+  {
+    value: 'foundation_builder' as DeepModeType,
+    label: 'Foundation Builder',
+    description: 'Build foundation docs for a client',
+    icon: Database,
+    color: 'text-purple-400',
+  },
+  {
+    value: 'ad_production' as DeepModeType,
+    label: 'Ad Production',
+    description: 'Produce ads from briefs',
+    icon: Palette,
+    color: 'text-rose-400',
   },
 ]
 
@@ -75,6 +89,10 @@ export function DeepModeSelector({ mode, onModeChange, disabled }: DeepModeSelec
               ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
               : mode === 'creative_strategist'
               ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
+              : mode === 'foundation_builder'
+              ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30 hover:bg-purple-500/25'
+              : mode === 'ad_production'
+              ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/25'
               : 'bg-blue-500/15 text-blue-400 border border-blue-500/30 hover:bg-blue-500/25'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent'
         } disabled:opacity-50`}

@@ -8,6 +8,8 @@ import { internal } from "./_generated/api";
 import { executeHarness } from "./harness/engine";
 import { contractReviewHarness } from "./harness/definitions/contractReview";
 import { creativeStrategistHarness } from "./harness/definitions/creativeStrategist";
+import { foundationBuilderHarness } from "./harness/definitions/foundationBuilder";
+import { adProductionHarness } from "./harness/definitions/adProduction";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -1726,6 +1728,8 @@ async function runChatLoop(params: {
     const harnessDefinitions: Record<string, any> = {
       contract_review: contractReviewHarness,
       creative_strategist: creativeStrategistHarness,
+      foundation_builder: foundationBuilderHarness,
+      ad_production: adProductionHarness,
     };
 
     const definition = harnessDefinitions[harnessMode];

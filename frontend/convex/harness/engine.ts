@@ -122,6 +122,22 @@ export async function executeHarness(
           });
         }
 
+        // Write foundation docs if configured
+        if (phase.foundationOutputs?.length && orgId && phaseOutput && typeof phaseOutput === "object") {
+          for (const { key, docType } of phase.foundationOutputs) {
+            const value = phaseOutput[key];
+            if (value) {
+              const content = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+              await ctx.runMutation(internal.foundationDocs.internals.upsert, {
+                orgId,
+                docType,
+                content,
+                sourceBot: phaseOutput[`${key}_source_bot`] ?? undefined,
+              });
+            }
+          }
+        }
+
         // Update harness run record
         await ctx.runMutation(internal.harness.internals.updatePhase, {
           runId,
@@ -470,6 +486,19 @@ async function runPhaseLlmSingle(
     }
   }
 
+  // Load foundation docs if configured
+  if (phase.foundationInputs?.length && hctx.orgId) {
+    for (const docType of phase.foundationInputs) {
+      const doc = await hctx.ctx.runQuery(
+        internal.foundationDocs.internals.getByOrgDoc,
+        { orgId: hctx.orgId, docType },
+      );
+      if (doc) {
+        workspaceContext += `\n\n### Foundation: ${docType}\n${doc.content}`;
+      }
+    }
+  }
+
   const userMessage = workspaceContext
     ? `Execute this phase. Here is the context from prior work:\n${workspaceContext}`
     : "Execute this phase based on the context provided in the system prompt.";
@@ -605,6 +634,20 @@ async function runPhaseBatchAgents(
     );
   }
 
+  // Load foundation docs for batch context
+  let foundationContext = "";
+  if (phase.foundationInputs?.length && hctx.orgId) {
+    for (const docType of phase.foundationInputs) {
+      const doc = await hctx.ctx.runQuery(
+        internal.foundationDocs.internals.getByOrgDoc,
+        { orgId: hctx.orgId, docType },
+      );
+      if (doc) {
+        foundationContext += `\n\n### Foundation: ${docType}\n${doc.content}`;
+      }
+    }
+  }
+
   const results: any[] = [];
 
   for (let i = 0; i < items.length; i++) {
@@ -617,11 +660,14 @@ async function runPhaseBatchAgents(
       total: items.length,
     });
 
-    const systemPrompt = substituteTemplate(
+    let systemPrompt = substituteTemplate(
       phase.systemPromptTemplate,
       priorResults,
       phaseIndex,
     );
+    if (foundationContext) {
+      systemPrompt += `\n\n## Foundation Context\n${foundationContext}`;
+    }
 
     const itemJson = JSON.stringify(item, null, 2);
     const messages = [

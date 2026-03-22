@@ -213,8 +213,12 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
         content: userMessage,
         orgId: activeOrgId ?? undefined,
         token,
-        deepMode: deepMode === 'deep' || deepMode === 'contract_review' || deepMode === 'creative_strategist',
-        harnessMode: deepMode === 'contract_review' ? 'contract_review' : deepMode === 'creative_strategist' ? 'creative_strategist' : undefined,
+        deepMode: deepMode === 'deep' || deepMode === 'contract_review' || deepMode === 'creative_strategist' || deepMode === 'foundation_builder' || deepMode === 'ad_production',
+        harnessMode: deepMode === 'contract_review' ? 'contract_review'
+          : deepMode === 'creative_strategist' ? 'creative_strategist'
+          : deepMode === 'foundation_builder' ? 'foundation_builder'
+          : deepMode === 'ad_production' ? 'ad_production'
+          : undefined,
         onHarnessPhaseStart: (phaseIndex, phaseName, phaseDescription) => {
           setWaiting(false)
           const harnessId = `${responseIdRef.current}-harness`
