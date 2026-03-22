@@ -15,6 +15,7 @@ interface HarnessContext {
   ctx: any;
   threadId: any;
   orgId?: string;
+  offerSlug?: string;
   userId: string;
   apiKey: string;
   baseUrl: string | null;
@@ -123,13 +124,14 @@ export async function executeHarness(
         }
 
         // Write foundation docs if configured
-        if (phase.foundationOutputs?.length && orgId && phaseOutput && typeof phaseOutput === "object") {
+        if (phase.foundationOutputs?.length && orgId && hctx.offerSlug && phaseOutput && typeof phaseOutput === "object") {
           for (const { key, docType } of phase.foundationOutputs) {
             const value = phaseOutput[key];
             if (value) {
               const content = typeof value === "string" ? value : JSON.stringify(value, null, 2);
               await ctx.runMutation(internal.foundationDocs.internals.upsert, {
                 orgId,
+                offerSlug: hctx.offerSlug,
                 docType,
                 content,
                 sourceBot: phaseOutput[`${key}_source_bot`] ?? undefined,
@@ -487,11 +489,11 @@ async function runPhaseLlmSingle(
   }
 
   // Load foundation docs if configured
-  if (phase.foundationInputs?.length && hctx.orgId) {
+  if (phase.foundationInputs?.length && hctx.orgId && hctx.offerSlug) {
     for (const docType of phase.foundationInputs) {
       const doc = await hctx.ctx.runQuery(
-        internal.foundationDocs.internals.getByOrgDoc,
-        { orgId: hctx.orgId, docType },
+        internal.foundationDocs.internals.getByOrgOfferDoc,
+        { orgId: hctx.orgId, offerSlug: hctx.offerSlug, docType },
       );
       if (doc) {
         workspaceContext += `\n\n### Foundation: ${docType}\n${doc.content}`;
@@ -638,11 +640,11 @@ async function runPhaseBatchAgents(
 
   // Load foundation docs for batch context
   let foundationContext = "";
-  if (phase.foundationInputs?.length && hctx.orgId) {
+  if (phase.foundationInputs?.length && hctx.orgId && hctx.offerSlug) {
     for (const docType of phase.foundationInputs) {
       const doc = await hctx.ctx.runQuery(
-        internal.foundationDocs.internals.getByOrgDoc,
-        { orgId: hctx.orgId, docType },
+        internal.foundationDocs.internals.getByOrgOfferDoc,
+        { orgId: hctx.orgId, offerSlug: hctx.offerSlug, docType },
       );
       if (doc) {
         foundationContext += `\n\n### Foundation: ${docType}\n${doc.content}`;

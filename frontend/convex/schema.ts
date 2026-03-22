@@ -211,10 +211,11 @@ export default defineSchema({
     error: v.optional(v.string()),
   }).index("by_thread", ["threadId"]),
 
-  // ─── Foundation Docs (Per-Org Persistent Knowledge) ─────────
+  // ─── Foundation Docs (Per-Org, Per-Offer Persistent Knowledge) ──
 
   foundationDocs: defineTable({
     orgId: v.string(),
+    offerSlug: v.optional(v.string()),
     docType: v.string(),
     content: v.string(),
     sourceBot: v.optional(v.string()),
@@ -222,7 +223,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_org", ["orgId"])
-    .index("by_org_doc", ["orgId", "docType"]),
+    .index("by_org_offer", ["orgId", "offerSlug"])
+    .index("by_org_offer_doc", ["orgId", "offerSlug", "docType"]),
 
   // ─── Google Drive (connection is per-user, files get orgId) ───
 

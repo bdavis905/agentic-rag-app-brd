@@ -1688,8 +1688,9 @@ async function runChatLoop(params: {
   emit: (type: string, data?: Record<string, any>) => void;
   deepMode?: boolean;
   harnessMode?: string;
+  offerSlug?: string;
 }): Promise<void> {
-  const { ctx, userId, orgId, threadId, content, emit, deepMode = false, harnessMode } = params;
+  const { ctx, userId, orgId, threadId, content, emit, deepMode = false, harnessMode, offerSlug } = params;
 
   // Attach threadId to ctx so executeTool can access it for todos/workspace
   (ctx as any).__threadId = threadId;
@@ -1757,7 +1758,7 @@ async function runChatLoop(params: {
 
     await executeHarness(
       {
-        ctx, threadId, orgId, userId, apiKey, baseUrl: llmBaseUrl, model: llmModel, emit,
+        ctx, threadId, orgId, offerSlug, userId, apiKey, baseUrl: llmBaseUrl, model: llmModel, emit,
         genesisApiKey: process.env.GENESIS_API_KEY,
         genesisProviderKey: process.env.GENESIS_ANTHROPIC_API_KEY,
       },
@@ -1976,14 +1977,14 @@ const chat = httpAction(async (ctx, request) => {
   }
   const userId = identity.subject;
 
-  let body: { threadId: string; content: string; orgId?: string; deepMode?: boolean; harnessMode?: string };
+  let body: { threadId: string; content: string; orgId?: string; deepMode?: boolean; harnessMode?: string; offerSlug?: string };
   try {
     body = await request.json();
   } catch {
     return jsonResponse({ error: "Invalid request body" }, 400);
   }
 
-  const { threadId, content, orgId, deepMode, harnessMode } = body;
+  const { threadId, content, orgId, deepMode, harnessMode, offerSlug } = body;
   if (!threadId || !content) {
     return jsonResponse({ error: "threadId and content are required" }, 400);
   }
@@ -2013,6 +2014,7 @@ const chat = httpAction(async (ctx, request) => {
       emit,
       deepMode: deepMode ?? false,
       harnessMode,
+      offerSlug,
     }),
   );
 });

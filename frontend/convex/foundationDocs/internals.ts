@@ -1,9 +1,9 @@
 /**
  * Internal foundation docs CRUD -- called from harness engine.
  *
- * Foundation docs are per-org persistent knowledge documents
+ * Foundation docs are per-org, per-offer persistent knowledge documents
  * (Build-A-Buyer, Copy Blocks, Offer Brief, etc.) that are
- * built once and reused across harness runs.
+ * built once per offer and reused across harness runs.
  */
 import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
@@ -11,6 +11,7 @@ import { v } from "convex/values";
 export const upsert = internalMutation({
   args: {
     orgId: v.string(),
+    offerSlug: v.string(),
     docType: v.string(),
     content: v.string(),
     sourceBot: v.optional(v.string()),
@@ -18,8 +19,8 @@ export const upsert = internalMutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("foundationDocs")
-      .withIndex("by_org_doc", (q: any) =>
-        q.eq("orgId", args.orgId).eq("docType", args.docType)
+      .withIndex("by_org_offer_doc", (q: any) =>
+        q.eq("orgId", args.orgId).eq("offerSlug", args.offerSlug).eq("docType", args.docType)
       )
       .first();
 
@@ -35,6 +36,7 @@ export const upsert = internalMutation({
 
     return await ctx.db.insert("foundationDocs", {
       orgId: args.orgId,
+      offerSlug: args.offerSlug,
       docType: args.docType,
       content: args.content,
       sourceBot: args.sourceBot,
@@ -44,18 +46,34 @@ export const upsert = internalMutation({
   },
 });
 
-export const getByOrgDoc = internalQuery({
+export const getByOrgOfferDoc = internalQuery({
   args: {
     orgId: v.string(),
+    offerSlug: v.string(),
     docType: v.string(),
   },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("foundationDocs")
-      .withIndex("by_org_doc", (q: any) =>
-        q.eq("orgId", args.orgId).eq("docType", args.docType)
+      .withIndex("by_org_offer_doc", (q: any) =>
+        q.eq("orgId", args.orgId).eq("offerSlug", args.offerSlug).eq("docType", args.docType)
       )
       .first();
+  },
+});
+
+export const listByOrgOffer = internalQuery({
+  args: {
+    orgId: v.string(),
+    offerSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("foundationDocs")
+      .withIndex("by_org_offer", (q: any) =>
+        q.eq("orgId", args.orgId).eq("offerSlug", args.offerSlug)
+      )
+      .collect();
   },
 });
 

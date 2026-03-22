@@ -12,6 +12,7 @@ export interface SendMessageOptions {
   token?: string | null;
   deepMode?: boolean;
   harnessMode?: string;
+  offerSlug?: string;
   onTextDelta: (text: string) => void;
   onDone: () => void;
   onError: (error: string) => void;
@@ -68,6 +69,7 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
     token,
     deepMode,
     harnessMode,
+    offerSlug,
     onTextDelta,
     onDone,
     onError,
@@ -114,6 +116,7 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
         orgId,
         deepMode: deepMode ?? false,
         ...(harnessMode ? { harnessMode } : {}),
+        ...(offerSlug ? { offerSlug } : {}),
       }),
       signal,
     });

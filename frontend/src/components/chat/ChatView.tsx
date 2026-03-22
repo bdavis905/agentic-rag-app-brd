@@ -103,6 +103,7 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
   const [waiting, setWaiting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deepMode, setDeepMode] = useState<DeepModeType>(null)
+  const [offerSlug, setOfferSlug] = useState('')
   const [planTodos, setPlanTodos] = useState<TodoItem[]>([])
   const [viewingFile, setViewingFile] = useState<WorkspaceFile | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -219,6 +220,7 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
           : deepMode === 'foundation_builder' ? 'foundation_builder'
           : deepMode === 'ad_production' ? 'ad_production'
           : undefined,
+        offerSlug: offerSlug || undefined,
         onHarnessPhaseStart: (phaseIndex, phaseName, phaseDescription) => {
           setWaiting(false)
           const harnessId = `${responseIdRef.current}-harness`
@@ -738,6 +740,20 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
       {/* Input area */}
       <div className="border-t border-border/50 bg-surface-1">
         <div className="mx-auto max-w-3xl px-4 py-4">
+          {/* Offer selector -- shown for harness modes that use foundation docs */}
+          {(deepMode === 'foundation_builder' || deepMode === 'ad_production' || deepMode === 'creative_strategist') && (
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <label className="text-xs text-muted-foreground shrink-0">Offer:</label>
+              <input
+                type="text"
+                value={offerSlug}
+                onChange={(e) => setOfferSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                placeholder="e.g. free-webinar, challenge, overages-course"
+                disabled={sending}
+                className="flex-1 h-7 px-2.5 text-xs rounded-md bg-background border border-border/50 text-foreground placeholder:text-muted-foreground/50 focus:border-primary/50 focus:outline-none transition-colors"
+              />
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="relative focus-glow rounded-full">
             <Input
               value={input}
