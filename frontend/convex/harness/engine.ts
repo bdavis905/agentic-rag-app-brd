@@ -383,7 +383,7 @@ async function executeHarnessTool(
     return await callGenesisBot(args);
   }
 
-  return `Error: Unknown tool '${toolName}'`;
+  return `Error: Unknown tool '${toolName}'. Available tools: search_documents, ls, tree, grep, glob, read, call_genesis_bot. Use 'read' with a document_id to read full document content.`;
 }
 
 /**

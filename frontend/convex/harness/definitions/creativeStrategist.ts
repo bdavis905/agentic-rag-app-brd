@@ -148,11 +148,18 @@ export const creativeStrategistHarness: HarnessDefinition = {
       name: "Context Retrieval",
       description: "Search the document library for brand voice, offer details, ICP, compliance rules, and existing winners",
       type: "llm_single",
+      model: "openai/gpt-4o-mini",
       tools: ragTools,
       maxRounds: 10,
       systemPromptTemplate: `You are a creative strategy context retriever. Your job is to search the document library thoroughly and compile a comprehensive client context package.
 
 You MUST make multiple search queries to cover all areas. Do not stop after one search. Be aggressive with retrieval -- the downstream phases depend entirely on the quality of context you pull.
+
+CRITICAL RULES:
+- You are ONLY retrieving context. Do NOT write ads, copy, or briefs. That happens in later phases.
+- Your ONLY job is to search documents and compile findings into the JSON schema below.
+- Only use the tools provided: search_documents, ls, tree, grep, glob, read. Do NOT call any other tools.
+- You MUST respond with ONLY the JSON object at the end. No other text, no analysis, no recommendations.
 
 ## Retrieval Strategy
 
@@ -248,11 +255,17 @@ IMPORTANT: Every field must be populated with REAL data from the documents, not 
       name: "Performance Intel",
       description: "Synthesize ad performance data into a structured intel report",
       type: "llm_single",
+      model: "openai/gpt-4o-mini",
       tools: ragTools,
       maxRounds: 6,
       systemPromptTemplate: `You are a performance intel synthesizer for Facebook ads. Your job is to search for and analyze all available performance data in the document library.
 
 Search for performance data documents -- these may be titled things like "winners", "performance", "phase analytics", "ad metrics", "campaign data", "Adzara", "results".
+
+CRITICAL RULES:
+- You are ONLY synthesizing performance data. Do NOT write ads or copy.
+- Only use the tools provided: search_documents, ls, tree, grep, glob, read. Do NOT call any other tools.
+- You MUST respond with ONLY the JSON object. No other text.
 
 Also reference the client context from the prior phase:
 $phase_0_output
@@ -322,6 +335,7 @@ If no performance data is found in the document library, return the structure wi
       name: "Coverage Gap Analysis",
       description: "Map the creative grid and identify untested segments, awareness levels, concepts, and angles",
       type: "llm_single",
+      model: "anthropic/claude-opus-4",
       systemPromptTemplate: `You are a creative coverage strategist. You analyze the full creative landscape and identify gaps in ad coverage using the Creative Strategist Flywheel framework.
 
 ## Input Data
@@ -439,6 +453,7 @@ Focus on the TOP 10 gaps. Don't try to fill every cell -- prioritize the highest
       name: "Creative Brief Generation",
       description: "Generate creative briefs for priority gaps using Genesis autobrief-bot",
       type: "llm_single",
+      model: "anthropic/claude-opus-4",
       tools: [genesisBotTool],
       maxRounds: 8,
       systemPromptTemplate: `You are a creative brief orchestrator. Your job is to take the top priority gaps from the coverage analysis and generate detailed creative briefs using the Genesis autobrief-bot.
