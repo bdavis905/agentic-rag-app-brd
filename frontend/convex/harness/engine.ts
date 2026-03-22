@@ -415,6 +415,7 @@ async function executeHarnessTool(
 
 /**
  * Call a Genesis copywriting/research bot via the OpenClaw API.
+ * Uses streaming to avoid timeout on long-running bot operations.
  */
 async function callGenesisBot(
   args: { bot_slug: string; prompt: string; temperature?: number },
@@ -425,7 +426,7 @@ async function callGenesisBot(
   const providerKey = genesisProviderKey || process.env.GENESIS_ANTHROPIC_API_KEY;
 
   if (!apiKey || !providerKey) {
-    return "Error: Genesis API keys not configured. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.";
+    return `Error: Genesis API keys not configured (apiKey: ${apiKey ? 'set' : 'missing'}, providerKey: ${providerKey ? 'set' : 'missing'}). Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.`;
   }
 
   const response = await fetch("https://gas.copycoders.ai/api/v1/chat/completions", {
@@ -438,7 +439,7 @@ async function callGenesisBot(
     body: JSON.stringify({
       model: args.bot_slug,
       messages: [{ role: "user", content: args.prompt }],
-      stream: false,
+      stream: true,
       temperature: args.temperature ?? 0.7,
     }),
   });
@@ -448,8 +449,36 @@ async function callGenesisBot(
     return `Error calling Genesis bot '${args.bot_slug}': ${response.status} ${errorText}`;
   }
 
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content ?? "Error: No response from Genesis bot.";
+  // Collect streamed response
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop()!;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === "data: [DONE]") continue;
+      if (!trimmed.startsWith("data: ")) continue;
+
+      try {
+        const chunk = JSON.parse(trimmed.slice(6));
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (delta) content += delta;
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  return content || "Error: No response from Genesis bot.";
 }
 
 // ─── Phase Runners ──────────────────────────────────────────────
@@ -523,7 +552,7 @@ async function runPhaseLlmSingle(
   }
 
   // Tool-calling loop
-  // Don't stream intermediate text -- tool calls show in StepsPanel
+  // Stream thinking text so user sees progress, but not raw JSON output
   let fullContent = "";
 
   for (let round = 0; round < maxRounds; round++) {
@@ -534,7 +563,8 @@ async function runPhaseLlmSingle(
       stream: true,
     };
 
-    const result = await streamLlmCall(url, apiKey, body, emit, false);
+    // Stream text on first round (shows LLM's plan/thinking) but not later rounds
+    const result = await streamLlmCall(url, apiKey, body, emit, round === 0);
     fullContent = result.content;
 
     // If the LLM finished with tool_calls, execute them and loop
