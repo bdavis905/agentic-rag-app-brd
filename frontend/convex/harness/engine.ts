@@ -408,7 +408,7 @@ async function callGenesisBot(args: {
     return "Error: Genesis API keys not configured. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.";
   }
 
-  const response = await fetch("http://159.65.166.122/api/v1/chat/completions", {
+  const response = await fetch("https://gas.copycoders.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
