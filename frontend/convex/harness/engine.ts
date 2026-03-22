@@ -80,6 +80,10 @@ export async function executeHarness(
         phase_description: phase.description,
       });
 
+      // Emit a visible text header so the user sees phase transitions in the chat stream
+      const phaseHeader = `\n\n---\n\n**Phase ${i + 1}: ${phase.name}**\n_${phase.description}_\n\n`;
+      emit("text_delta", { content: phaseHeader });
+
       let phaseOutput: any;
 
       try {
@@ -125,6 +129,9 @@ export async function executeHarness(
 
         // Generate markdown summary
         const resultMarkdown = generatePhaseMarkdown(phase.name, phaseOutput);
+
+        // Emit visible completion marker
+        emit("text_delta", { content: `\n\n_Phase ${i + 1} complete._\n` });
 
         emit("harness_phase_complete", {
           phase_index: i,
