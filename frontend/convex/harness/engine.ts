@@ -513,13 +513,15 @@ async function runPhaseLlmSingle(
   const hasTools = phase.tools?.length > 0;
 
   // If no tools, do a simple single call (preserves original behavior)
+  // Don't stream raw JSON output -- it goes to workspace files
   if (!hasTools) {
     const body: any = { model, messages, stream: true };
-    const result = await streamLlmCall(url, apiKey, body, emit, true);
+    const result = await streamLlmCall(url, apiKey, body, emit, false);
     return parseStructuredOutput(result.content);
   }
 
   // Tool-calling loop
+  // Don't stream intermediate text -- tool calls show in StepsPanel
   let fullContent = "";
 
   for (let round = 0; round < maxRounds; round++) {
@@ -530,7 +532,7 @@ async function runPhaseLlmSingle(
       stream: true,
     };
 
-    const result = await streamLlmCall(url, apiKey, body, emit, true);
+    const result = await streamLlmCall(url, apiKey, body, emit, false);
     fullContent = result.content;
 
     // If the LLM finished with tool_calls, execute them and loop
