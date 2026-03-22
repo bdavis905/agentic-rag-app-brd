@@ -407,18 +407,18 @@ async function executeHarnessTool(
 
   // ── Genesis Bot (runs as separate Convex action) ──
   if (toolName === "call_genesis_bot") {
-    // Get Genesis keys from settings (cached on hctx after first call)
+    // Get Genesis keys via Node.js action (env vars), cached on hctx
     if (!hctx.genesisApiKey || !hctx.genesisProviderKey) {
-      // Try with orgId first, then without (fallback to any settings record that has the keys)
-      let settings = await ctx.runQuery(internal.chat.internals.getSettings, { orgId: hctx.orgId });
-      if (!settings?.genesisApiKey && hctx.orgId) {
-        settings = await ctx.runQuery(internal.chat.internals.getSettings, {});
+      try {
+        const keys: any = await ctx.runAction(internal.harness.genesisAction.getGenesisKeys, {});
+        if (keys?.apiKey) hctx.genesisApiKey = keys.apiKey;
+        if (keys?.providerKey) hctx.genesisProviderKey = keys.providerKey;
+      } catch (e: any) {
+        return `Error fetching Genesis keys: ${e.message}`;
       }
-      if (settings?.genesisApiKey) hctx.genesisApiKey = settings.genesisApiKey;
-      if (settings?.genesisProviderKey) hctx.genesisProviderKey = settings.genesisProviderKey;
     }
     if (!hctx.genesisApiKey || !hctx.genesisProviderKey) {
-      return `Error: Genesis API keys not found in settings (orgId: ${hctx.orgId || "none"}). Go to Settings and add Genesis API Key and Provider Key.`;
+      return `Error: Genesis API keys not available (apiKey: ${hctx.genesisApiKey ? "set" : "missing"}, providerKey: ${hctx.genesisProviderKey ? "set" : "missing"}). Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex env vars.`;
     }
     return await ctx.runAction(internal.harness.genesisAction.callBot, {
       botSlug: args.bot_slug ?? "",
