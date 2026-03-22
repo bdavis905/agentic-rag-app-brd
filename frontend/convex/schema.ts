@@ -146,6 +146,8 @@ export default defineSchema({
     webSearchProvider: v.optional(v.string()),
     webSearchApiKey: v.optional(v.string()),
     chatSystemPrompt: v.optional(v.string()),
+    genesisApiKey: v.optional(v.string()),
+    genesisProviderKey: v.optional(v.string()),
   }).index("by_org", ["orgId"]),
 
   skills: defineTable({

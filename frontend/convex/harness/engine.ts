@@ -407,14 +407,14 @@ async function executeHarnessTool(
 
   // ── Genesis Bot (runs as separate Convex action) ──
   if (toolName === "call_genesis_bot") {
-    // Get Genesis keys (cached on hctx after first call)
+    // Get Genesis keys from settings (cached on hctx after first call)
     if (!hctx.genesisApiKey || !hctx.genesisProviderKey) {
-      const keys = await ctx.runAction(internal.harness.genesisAction.getGenesisKeys, {});
-      if (keys?.apiKey) hctx.genesisApiKey = keys.apiKey;
-      if (keys?.providerKey) hctx.genesisProviderKey = keys.providerKey;
+      const settings = await ctx.runQuery(internal.chat.internals.getSettings, { orgId: hctx.orgId });
+      if (settings?.genesisApiKey) hctx.genesisApiKey = settings.genesisApiKey;
+      if (settings?.genesisProviderKey) hctx.genesisProviderKey = settings.genesisProviderKey;
     }
     if (!hctx.genesisApiKey || !hctx.genesisProviderKey) {
-      return "Error: Genesis API keys not found. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.";
+      return "Error: Genesis API keys not configured in settings. Go to Settings and add Genesis API Key and Provider Key.";
     }
     return await ctx.runAction(internal.harness.genesisAction.callBot, {
       botSlug: args.bot_slug ?? "",

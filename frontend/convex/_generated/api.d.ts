@@ -42,6 +42,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as migrations_backfillMemberEmails from "../migrations/backfillMemberEmails.js";
 import type * as migrations_backfillMemberEmailsHelper from "../migrations/backfillMemberEmailsHelper.js";
 import type * as migrations_backfillOrgs from "../migrations/backfillOrgs.js";
+import type * as migrations_patchGenesis from "../migrations/patchGenesis.js";
 import type * as migrations_seedProdSettings from "../migrations/seedProdSettings.js";
 import type * as migrations_seedProdSettingsMutation from "../migrations/seedProdSettingsMutation.js";
 import type * as navigation_internals from "../navigation/internals.js";
@@ -103,6 +104,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/backfillMemberEmails": typeof migrations_backfillMemberEmails;
   "migrations/backfillMemberEmailsHelper": typeof migrations_backfillMemberEmailsHelper;
   "migrations/backfillOrgs": typeof migrations_backfillOrgs;
+  "migrations/patchGenesis": typeof migrations_patchGenesis;
   "migrations/seedProdSettings": typeof migrations_seedProdSettings;
   "migrations/seedProdSettingsMutation": typeof migrations_seedProdSettingsMutation;
   "navigation/internals": typeof navigation_internals;
