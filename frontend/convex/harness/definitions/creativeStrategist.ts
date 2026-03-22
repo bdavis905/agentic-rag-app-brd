@@ -111,18 +111,21 @@ const genesisBotTool = {
   type: "function",
   function: {
     name: "call_genesis_bot",
-    description: `Call a Genesis copywriting/research bot. Available bots include:
-- build-a-buyer-elite- (buyer persona generation)
-- pain-matrix-core-wound-bot-copy (pain mapping and core wound analysis)
-- universal-mechanism-bot (unique mechanism identification)
-- autobrief-bot- (structured creative brief from research inputs)
-- reverse-brief (reverse-engineer a brief from a winning ad)
-- ad-lottery (random creative angle generator)
-- 75-ads (ad copy generation -- 75 variations)
-- ad-hook-generator (hook generation)
-- headline-bot-v2 (headline generation)
-- microvsl (micro VSL script)
-And 20+ image prompt bots.`,
+    description: `Call a Genesis copywriting/research bot (132 bots available). Key bots by category:
+
+RESEARCH: build-a-buyer-elite- (deep buyer psychology), pain-matrix-core-wound-bot-copy (pain mapping), copy-blocks-extract (extract persuasive elements), ad-tagging-bot- (deconstruct ads into concept/angle/style/hook), reverse-brief-bot (reverse-engineer sales copy), deep-dive-voice-analyzer (voice analysis)
+
+STRATEGY: autobrief-bot- (complete marketing narrative/brief), belief-analyst-bot (map beliefs needed for conversion), belief-alchemist-bot (belief-shifting scripts), epiphany-threshold-bot (find Goldilocks Zone claims), outcome-engineer- (core transformation promise), storm-bot (30-50 piece retargeting blueprint), voice-mod-bot (brand voice archetype)
+
+CREATIVE: ad-lottery-bot (random concept/angle/style combos), headline-bot-v2 (headlines), headline-bot- (DR headlines with copy blocks), pig-idea-bot (punch-in-the-gut story ideas), unhinged-ad-bot- (cinematic 8-sec video concepts)
+
+COPYWRITING: 75-ads (75 ad variations, Opus), ad-hook-bot-1 (ad hooks, Opus), microvsl (micro VSL scripts, Opus), direct-response-talking-head-script-bot- (15-90 sec scripts), in-feed-vsl-bot (cold traffic VSL concepts), vsl-bot (full 10-20 min VSLs), mario-bot- (emails in Mario style), promo-bot (promo email sequences), video-brief-bot (production-ready video briefs), narrative-bot (VSL background stories), infinite-adcbwriter-bot (120-sec teaser ads), video-adscript-bot (45-60 sec Meta/YouTube scripts)
+
+IMAGE PROMPTS (47 bots): universal-static-bot (recommends best format), bold-typography-bot, hero-bot-, comparison-bot, testimonial-bot-, infographic-bot-, animation-bot, collage-bot, native-news-bot-, meme-style-ad-concept-generator-bot, lo-fi-ad-concept-generator-bot, headline-image-bot, holding-sign-bot, side-by-sidebefore-and-after-bot-, screenshotchatnotification-transformer-bot, note-from-founder-bot-, breakingauthority-transformer-bot-, static-swipe-bot- (reverse-engineer any static ad), unaware-static-image-ads-bot (final 9:16 image prompts)
+
+PAGES: advertorial-architect, caveman-page-master-bot, checkout-page-bot, opt-in-page-optimization-bot, quiz-bot-master-bot
+
+OTHER: cash-analysisvariation-bot (tag ads + generate variations), segment-surgeon-bot (market segmentation), segmentmech-swapper-bot (swap segment/mechanism on winning ads), master-concept-bot (complete marketing intelligence), strategic-allocation-bot (creative testing budget allocation)`,
     parameters: {
       type: "object",
       properties: {
