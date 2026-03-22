@@ -405,12 +405,23 @@ async function executeHarnessTool(
     });
   }
 
-  // ── Genesis Bot (runs as separate Convex action for env var access) ──
+  // ── Genesis Bot (runs as separate Convex action) ──
   if (toolName === "call_genesis_bot") {
+    // Get Genesis keys (cached on hctx after first call)
+    if (!hctx.genesisApiKey || !hctx.genesisProviderKey) {
+      const keys = await ctx.runAction(internal.harness.genesisAction.getGenesisKeys, {});
+      if (keys?.apiKey) hctx.genesisApiKey = keys.apiKey;
+      if (keys?.providerKey) hctx.genesisProviderKey = keys.providerKey;
+    }
+    if (!hctx.genesisApiKey || !hctx.genesisProviderKey) {
+      return "Error: Genesis API keys not found. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.";
+    }
     return await ctx.runAction(internal.harness.genesisAction.callBot, {
       botSlug: args.bot_slug ?? "",
       prompt: args.prompt ?? "",
       temperature: args.temperature,
+      apiKey: hctx.genesisApiKey,
+      providerKey: hctx.genesisProviderKey,
     });
   }
 

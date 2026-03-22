@@ -3,24 +3,40 @@
 /**
  * Genesis bot caller as a Convex internal action.
  *
- * Runs in Node.js runtime for guaranteed process.env access.
+ * Runs in Node.js runtime. API keys are passed as arguments
+ * (read from settings table by the engine, not from process.env).
  * Called from the harness engine via ctx.runAction().
  */
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
+
+/**
+ * Read Genesis API keys from env vars (runs in Node.js runtime).
+ * Called once at the start of harness execution to get the keys.
+ */
+export const getGenesisKeys = internalAction({
+  args: {},
+  handler: async () => {
+    return {
+      apiKey: process.env.GENESIS_API_KEY ?? null,
+      providerKey: process.env.GENESIS_ANTHROPIC_API_KEY ?? null,
+    };
+  },
+});
 
 export const callBot = internalAction({
   args: {
     botSlug: v.string(),
     prompt: v.string(),
     temperature: v.optional(v.number()),
+    apiKey: v.string(),
+    providerKey: v.string(),
   },
   handler: async (_ctx, args) => {
-    const apiKey = process.env.GENESIS_API_KEY;
-    const providerKey = process.env.GENESIS_ANTHROPIC_API_KEY;
+    const { apiKey, providerKey } = args;
 
     if (!apiKey || !providerKey) {
-      return `Error: Genesis API keys not configured. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.`;
+      return `Error: Genesis API keys not provided.`;
     }
 
     const response = await fetch("https://gas.copycoders.ai/api/v1/chat/completions", {
