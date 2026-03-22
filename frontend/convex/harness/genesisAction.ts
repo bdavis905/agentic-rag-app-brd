@@ -1,7 +1,9 @@
+"use node";
+
 /**
  * Genesis bot caller as a Convex internal action.
  *
- * Runs in its own action context with full process.env access.
+ * Runs in Node.js runtime for guaranteed process.env access.
  * Called from the harness engine via ctx.runAction().
  */
 import { internalAction } from "../_generated/server";
