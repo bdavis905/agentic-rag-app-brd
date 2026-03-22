@@ -20,6 +20,8 @@ interface HarnessContext {
   baseUrl: string | null;
   model: string;
   emit: (type: string, data?: Record<string, any>) => void;
+  genesisApiKey?: string;
+  genesisProviderKey?: string;
 }
 
 /**
@@ -387,7 +389,7 @@ async function executeHarnessTool(
 
   // ── Genesis Bot ──
   if (toolName === "call_genesis_bot") {
-    return await callGenesisBot(args);
+    return await callGenesisBot(args, hctx.genesisApiKey, hctx.genesisProviderKey);
   }
 
   return `Error: Unknown tool '${toolName}'. Available tools: search_documents, ls, tree, grep, glob, read, call_genesis_bot. Use 'read' with a document_id to read full document content.`;
@@ -396,13 +398,13 @@ async function executeHarnessTool(
 /**
  * Call a Genesis copywriting/research bot via the OpenClaw API.
  */
-async function callGenesisBot(args: {
-  bot_slug: string;
-  prompt: string;
-  temperature?: number;
-}): Promise<string> {
-  const apiKey = process.env.GENESIS_API_KEY;
-  const providerKey = process.env.GENESIS_ANTHROPIC_API_KEY;
+async function callGenesisBot(
+  args: { bot_slug: string; prompt: string; temperature?: number },
+  genesisApiKey?: string,
+  genesisProviderKey?: string,
+): Promise<string> {
+  const apiKey = genesisApiKey || process.env.GENESIS_API_KEY;
+  const providerKey = genesisProviderKey || process.env.GENESIS_ANTHROPIC_API_KEY;
 
   if (!apiKey || !providerKey) {
     return "Error: Genesis API keys not configured. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.";

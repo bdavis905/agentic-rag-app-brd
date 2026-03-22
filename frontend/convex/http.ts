@@ -1752,7 +1752,11 @@ async function runChatLoop(params: {
     });
 
     await executeHarness(
-      { ctx, threadId, orgId, userId, apiKey, baseUrl: llmBaseUrl, model: llmModel, emit },
+      {
+        ctx, threadId, orgId, userId, apiKey, baseUrl: llmBaseUrl, model: llmModel, emit,
+        genesisApiKey: process.env.GENESIS_API_KEY,
+        genesisProviderKey: process.env.GENESIS_ANTHROPIC_API_KEY,
+      },
       definition,
       ["input.txt"],
     );
