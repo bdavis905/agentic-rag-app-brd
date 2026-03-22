@@ -25,6 +25,7 @@ import type * as googleDrive_actions from "../googleDrive/actions.js";
 import type * as googleDrive_internals from "../googleDrive/internals.js";
 import type * as googleDrive_queries from "../googleDrive/queries.js";
 import type * as harness_definitions_contractReview from "../harness/definitions/contractReview.js";
+import type * as harness_definitions_creativeStrategist from "../harness/definitions/creativeStrategist.js";
 import type * as harness_engine from "../harness/engine.js";
 import type * as harness_internals from "../harness/internals.js";
 import type * as harness_types from "../harness/types.js";
@@ -81,6 +82,7 @@ declare const fullApi: ApiFromModules<{
   "googleDrive/internals": typeof googleDrive_internals;
   "googleDrive/queries": typeof googleDrive_queries;
   "harness/definitions/contractReview": typeof harness_definitions_contractReview;
+  "harness/definitions/creativeStrategist": typeof harness_definitions_creativeStrategist;
   "harness/engine": typeof harness_engine;
   "harness/internals": typeof harness_internals;
   "harness/types": typeof harness_types;

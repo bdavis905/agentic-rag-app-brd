@@ -7,6 +7,7 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { executeHarness } from "./harness/engine";
 import { contractReviewHarness } from "./harness/definitions/contractReview";
+import { creativeStrategistHarness } from "./harness/definitions/creativeStrategist";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -1724,6 +1725,7 @@ async function runChatLoop(params: {
   if (harnessMode) {
     const harnessDefinitions: Record<string, any> = {
       contract_review: contractReviewHarness,
+      creative_strategist: creativeStrategistHarness,
     };
 
     const definition = harnessDefinitions[harnessMode];

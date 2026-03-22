@@ -5,7 +5,7 @@
  * Executes phases sequentially, emitting SSE events for each phase.
  *
  * Phase types:
- * - llm_single: One LLM call with structured output
+ * - llm_single: One LLM call with structured output (supports tool-calling loop)
  * - llm_batch_agents: Iterate over items, one LLM call per item
  */
 import type { HarnessDefinition } from "./types";
@@ -191,8 +191,245 @@ export async function executeHarness(
   }
 }
 
+// ─── Streaming LLM Call with Tool-Calling Loop ──────────────────
+
+interface StreamResult {
+  content: string;
+  toolCalls: Array<{ id: string; name: string; arguments: string }>;
+  finishReason: string;
+}
+
+/**
+ * Make a streaming LLM call and return content + tool calls.
+ */
+async function streamLlmCall(
+  url: string,
+  apiKey: string,
+  body: any,
+  emit: (type: string, data?: Record<string, any>) => void,
+  streamText: boolean = true,
+): Promise<StreamResult> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`LLM API error ${response.status}: ${errorText}`);
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let finishReason = "stop";
+  const toolCallsBuffer = new Map<number, { id: string; name: string; arguments: string }>();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop()!;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === "data: [DONE]") continue;
+      if (!trimmed.startsWith("data: ")) continue;
+
+      let chunk: any;
+      try {
+        chunk = JSON.parse(trimmed.slice(6));
+      } catch {
+        continue;
+      }
+
+      const choice = chunk.choices?.[0];
+      if (!choice) continue;
+
+      if (choice.finish_reason) {
+        finishReason = choice.finish_reason;
+      }
+
+      const delta = choice.delta;
+      if (!delta) continue;
+
+      // Text content
+      if (delta.content) {
+        content += delta.content;
+        if (streamText) {
+          emit("text_delta", { content: delta.content });
+        }
+      }
+
+      // Tool calls
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          const idx = tc.index;
+          if (!toolCallsBuffer.has(idx)) {
+            toolCallsBuffer.set(idx, {
+              id: tc.id ?? "",
+              name: tc.function?.name ?? "",
+              arguments: "",
+            });
+          }
+          const existing = toolCallsBuffer.get(idx)!;
+          if (tc.id) existing.id = tc.id;
+          if (tc.function?.name) existing.name = tc.function.name;
+          if (tc.function?.arguments) existing.arguments += tc.function.arguments;
+        }
+      }
+    }
+  }
+
+  return {
+    content,
+    toolCalls: [...toolCallsBuffer.values()],
+    finishReason,
+  };
+}
+
+// ─── Harness Tool Dispatcher ────────────────────────────────────
+
+/**
+ * Execute a harness tool call. Routes to the appropriate backend function.
+ */
+async function executeHarnessTool(
+  hctx: HarnessContext,
+  toolName: string,
+  args: Record<string, any>,
+): Promise<string> {
+  const { ctx, orgId, userId } = hctx;
+  const filterArgs = orgId ? { orgId } : { userId };
+
+  // ── RAG Search ──
+  if (toolName === "search_documents") {
+    const query = args.query ?? "";
+    const searchMode = args.search_mode ?? "hybrid";
+    const results = await ctx.runAction(
+      internal.search.actions.hybridSearch,
+      { query, ...filterArgs, topK: 5, searchMode },
+    );
+
+    if (!results || results.length === 0) {
+      return "No relevant documents found.";
+    }
+
+    return results
+      .map((r: any) => {
+        const meta = r.metadata ?? {};
+        const source = meta.filename ?? "unknown";
+        const docId = r.documentId ?? "";
+        const scores: string[] = [];
+        if (r.rerankScore != null) scores.push(`rerank: ${r.rerankScore.toFixed(3)}`);
+        if (r.rrfScore != null) scores.push(`rrf: ${r.rrfScore.toFixed(4)}`);
+        if (r._score != null) scores.push(`similarity: ${r._score.toFixed(2)}`);
+        const scoreStr = scores.length > 0 ? scores.join(", ") : "n/a";
+        return `[Source: ${source}]\n[document_id: ${docId}]\n(${scoreStr})\n${r.content}`;
+      })
+      .join("\n\n---\n\n");
+  }
+
+  // ── Navigation Tools ──
+  if (toolName === "ls") {
+    return await ctx.runQuery(internal.navigation.internals.ls, {
+      path: args.path ?? "root",
+      ...filterArgs,
+    });
+  }
+
+  if (toolName === "tree") {
+    return await ctx.runQuery(internal.navigation.internals.tree, {
+      path: args.path ?? "root",
+      depth: args.depth,
+      limit: args.limit,
+      ...filterArgs,
+    });
+  }
+
+  if (toolName === "grep") {
+    return await ctx.runQuery(internal.navigation.internals.grep, {
+      pattern: args.pattern ?? "",
+      path: args.path,
+      caseSensitive: args.case_sensitive,
+      ...filterArgs,
+    });
+  }
+
+  if (toolName === "glob") {
+    return await ctx.runQuery(internal.navigation.internals.glob, {
+      pattern: args.pattern ?? "",
+      ...filterArgs,
+    });
+  }
+
+  if (toolName === "read") {
+    return await ctx.runQuery(internal.navigation.internals.read, {
+      documentId: args.document_id ?? "",
+      startLine: args.start_line,
+      endLine: args.end_line,
+      ...filterArgs,
+    });
+  }
+
+  // ── Genesis Bot ──
+  if (toolName === "call_genesis_bot") {
+    return await callGenesisBot(args);
+  }
+
+  return `Error: Unknown tool '${toolName}'`;
+}
+
+/**
+ * Call a Genesis copywriting/research bot via the OpenClaw API.
+ */
+async function callGenesisBot(args: {
+  bot_slug: string;
+  prompt: string;
+  temperature?: number;
+}): Promise<string> {
+  const apiKey = process.env.GENESIS_API_KEY;
+  const providerKey = process.env.GENESIS_ANTHROPIC_API_KEY;
+
+  if (!apiKey || !providerKey) {
+    return "Error: Genesis API keys not configured. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.";
+  }
+
+  const response = await fetch("http://159.65.166.122/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+      "X-Provider-Key": providerKey,
+    },
+    body: JSON.stringify({
+      model: args.bot_slug,
+      messages: [{ role: "user", content: args.prompt }],
+      stream: false,
+      temperature: args.temperature ?? 0.7,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    return `Error calling Genesis bot '${args.bot_slug}': ${response.status} ${errorText}`;
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content ?? "Error: No response from Genesis bot.";
+}
+
+// ─── Phase Runners ──────────────────────────────────────────────
+
 /**
  * Run a single LLM call phase with structured output.
+ * Supports tool-calling loop when phase.tools is defined.
  */
 async function runPhaseLlmSingle(
   hctx: HarnessContext,
@@ -200,7 +437,8 @@ async function runPhaseLlmSingle(
   phaseIndex: number,
   priorResults: Record<string, any>,
 ): Promise<any> {
-  const { apiKey, baseUrl, model, emit } = hctx;
+  const { apiKey, baseUrl, emit } = hctx;
+  const model = phase.model || hctx.model;
 
   // Build system prompt from template
   const systemPrompt = substituteTemplate(
@@ -227,78 +465,97 @@ async function runPhaseLlmSingle(
     ? `Execute this phase. Here is the context from prior work:\n${workspaceContext}`
     : "Execute this phase based on the context provided in the system prompt.";
 
-  const messages = [
+  const messages: any[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: userMessage },
   ];
 
-  // Make LLM call
   const url = `${(baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`;
+  const maxRounds = phase.maxRounds ?? 10;
+  const hasTools = phase.tools?.length > 0;
 
-  const body: any = {
-    model,
-    messages,
-    stream: true,
-  };
-
-  if (phase.tools?.length) {
-    body.tools = phase.tools;
+  // If no tools, do a simple single call (preserves original behavior)
+  if (!hasTools) {
+    const body: any = { model, messages, stream: true };
+    const result = await streamLlmCall(url, apiKey, body, emit, true);
+    return parseStructuredOutput(result.content);
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`LLM API error ${response.status}: ${errorText}`);
-  }
-
-  // Stream response
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
+  // Tool-calling loop
   let fullContent = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  for (let round = 0; round < maxRounds; round++) {
+    const body: any = {
+      model,
+      messages,
+      tools: phase.tools,
+      stream: true,
+    };
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop()!;
+    const result = await streamLlmCall(url, apiKey, body, emit, true);
+    fullContent = result.content;
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === "data: [DONE]") continue;
-      if (!trimmed.startsWith("data: ")) continue;
+    // If the LLM finished with tool_calls, execute them and loop
+    if (
+      result.finishReason === "tool_calls" &&
+      result.toolCalls.length > 0
+    ) {
+      // Add assistant message with tool_calls to conversation
+      messages.push({
+        role: "assistant",
+        content: result.content || null,
+        tool_calls: result.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.name, arguments: tc.arguments },
+        })),
+      });
 
-      let chunk: any;
-      try {
-        chunk = JSON.parse(trimmed.slice(6));
-      } catch {
-        continue;
+      // Execute each tool call
+      for (const tc of result.toolCalls) {
+        let parsedArgs: Record<string, any> = {};
+        try {
+          parsedArgs = JSON.parse(tc.arguments || "{}");
+        } catch {
+          /* empty */
+        }
+
+        emit("tool_call_start", {
+          tool_name: tc.name,
+          arguments: tc.arguments,
+        });
+
+        const toolResult = await executeHarnessTool(hctx, tc.name, parsedArgs);
+
+        // Add tool result to conversation
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: toolResult,
+        });
+
+        const resultSummary = toolResult.length > 200
+          ? toolResult.slice(0, 200) + "..."
+          : toolResult;
+
+        emit("tool_call_complete", {
+          tool_name: tc.name,
+          result_summary: resultSummary,
+        });
       }
 
-      const delta = chunk.choices?.[0]?.delta;
-      if (delta?.content) {
-        fullContent += delta.content;
-        emit("text_delta", { content: delta.content });
-      }
+      continue; // Next round
     }
+
+    // LLM finished without tool calls -- we're done
+    break;
   }
 
-  // Try to parse JSON from the response
   return parseStructuredOutput(fullContent);
 }
 
 /**
- * Run a batch phase — iterate over items and call LLM for each.
+ * Run a batch phase -- iterate over items and call LLM for each.
  */
 async function runPhaseBatchAgents(
   hctx: HarnessContext,
@@ -306,7 +563,8 @@ async function runPhaseBatchAgents(
   phaseIndex: number,
   priorResults: Record<string, any>,
 ): Promise<any> {
-  const { apiKey, baseUrl, model, emit } = hctx;
+  const { apiKey, baseUrl, emit } = hctx;
+  const model = phase.model || hctx.model;
 
   // Get items from prior phase output
   if (!phase.batchItemsKey) {
@@ -412,6 +670,8 @@ async function runPhaseBatchAgents(
 
   return { assessments: results };
 }
+
+// ─── Utilities ──────────────────────────────────────────────────
 
 /**
  * Substitute $variables in a template string.

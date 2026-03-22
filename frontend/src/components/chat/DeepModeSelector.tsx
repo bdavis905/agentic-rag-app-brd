@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { Zap, FileCheck, MessageSquare } from 'lucide-react'
+import { Zap, FileCheck, MessageSquare, Target } from 'lucide-react'
 
-export type DeepModeType = null | 'deep' | 'contract_review'
+export type DeepModeType = null | 'deep' | 'contract_review' | 'creative_strategist'
 
 interface DeepModeSelectorProps {
   mode: DeepModeType
@@ -30,6 +30,13 @@ const modes = [
     description: 'Multi-phase contract analysis',
     icon: FileCheck,
     color: 'text-blue-400',
+  },
+  {
+    value: 'creative_strategist' as DeepModeType,
+    label: 'Creative Strategist',
+    description: 'Ad strategy, coverage gaps, briefs',
+    icon: Target,
+    color: 'text-emerald-400',
   },
 ]
 
@@ -66,6 +73,8 @@ export function DeepModeSelector({ mode, onModeChange, disabled }: DeepModeSelec
           mode
             ? mode === 'deep'
               ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
+              : mode === 'creative_strategist'
+              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
               : 'bg-blue-500/15 text-blue-400 border border-blue-500/30 hover:bg-blue-500/25'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent'
         } disabled:opacity-50`}

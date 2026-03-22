@@ -36,6 +36,8 @@ export interface PhaseDefinition {
   workspaceOutput?: string;
   /** Max LLM rounds for agent phases */
   maxRounds?: number;
+  /** Override the default model for this phase */
+  model?: string;
 }
 
 export interface HarnessDefinition {
