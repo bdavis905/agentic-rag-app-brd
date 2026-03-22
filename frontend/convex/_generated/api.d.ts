@@ -30,6 +30,7 @@ import type * as harness_definitions_contractReview from "../harness/definitions
 import type * as harness_definitions_creativeStrategist from "../harness/definitions/creativeStrategist.js";
 import type * as harness_definitions_foundationBuilder from "../harness/definitions/foundationBuilder.js";
 import type * as harness_engine from "../harness/engine.js";
+import type * as harness_genesisAction from "../harness/genesisAction.js";
 import type * as harness_internals from "../harness/internals.js";
 import type * as harness_types from "../harness/types.js";
 import type * as http from "../http.js";
@@ -90,6 +91,7 @@ declare const fullApi: ApiFromModules<{
   "harness/definitions/creativeStrategist": typeof harness_definitions_creativeStrategist;
   "harness/definitions/foundationBuilder": typeof harness_definitions_foundationBuilder;
   "harness/engine": typeof harness_engine;
+  "harness/genesisAction": typeof harness_genesisAction;
   "harness/internals": typeof harness_internals;
   "harness/types": typeof harness_types;
   http: typeof http;

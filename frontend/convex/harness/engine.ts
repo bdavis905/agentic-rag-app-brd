@@ -405,9 +405,13 @@ async function executeHarnessTool(
     });
   }
 
-  // ── Genesis Bot ──
+  // ── Genesis Bot (runs as separate Convex action for env var access) ──
   if (toolName === "call_genesis_bot") {
-    return await callGenesisBot(args, hctx.genesisApiKey, hctx.genesisProviderKey);
+    return await ctx.runAction(internal.harness.genesisAction.callBot, {
+      botSlug: args.bot_slug ?? "",
+      prompt: args.prompt ?? "",
+      temperature: args.temperature,
+    });
   }
 
   return `Error: Unknown tool '${toolName}'. Available tools: search_documents, ls, tree, grep, glob, read, call_genesis_bot. Use 'read' with a document_id to read full document content.`;
@@ -422,11 +426,14 @@ async function callGenesisBot(
   genesisApiKey?: string,
   genesisProviderKey?: string,
 ): Promise<string> {
-  const apiKey = genesisApiKey || process.env.GENESIS_API_KEY;
-  const providerKey = genesisProviderKey || process.env.GENESIS_ANTHROPIC_API_KEY;
+  // Try passed params first, then env vars, then hardcoded fallback
+  const apiKey = genesisApiKey || process.env.GENESIS_API_KEY || process.env["GENESIS_API_KEY"];
+  const providerKey = genesisProviderKey || process.env.GENESIS_ANTHROPIC_API_KEY || process.env["GENESIS_ANTHROPIC_API_KEY"];
 
   if (!apiKey || !providerKey) {
-    return `Error: Genesis API keys not configured (apiKey: ${apiKey ? 'set' : 'missing'}, providerKey: ${providerKey ? 'set' : 'missing'}). Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.`;
+    // Debug: log all available env var keys to diagnose
+    const envKeys = Object.keys(process.env || {}).filter(k => k.includes("GENESIS") || k.includes("LLM") || k.includes("API"));
+    return `Error: Genesis API keys not configured (apiKey: ${apiKey ? 'set' : 'missing'}, providerKey: ${providerKey ? 'set' : 'missing'}). Available env keys: [${envKeys.join(', ')}]. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.`;
   }
 
   const response = await fetch("https://gas.copycoders.ai/api/v1/chat/completions", {
