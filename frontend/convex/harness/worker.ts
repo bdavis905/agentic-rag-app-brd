@@ -433,6 +433,12 @@ async function buildPhaseContext(
   // Build system prompt
   const systemPrompt = substituteTemplate(phase.systemPromptTemplate, priorResults, phaseIndex);
 
+  // Load user input (always included if present)
+  const userInput = await ctx.runQuery(internal.workspace.internals.readFile, {
+    threadId: run.threadId,
+    filePath: "input.txt",
+  });
+
   // Load workspace and foundation context
   let workspaceContext = "";
   const foundationDocsLoaded: Array<{ docType: string; contentLength: number }> = [];
@@ -461,9 +467,17 @@ async function buildPhaseContext(
     }
   }
 
-  const userMessage = workspaceContext
-    ? `Execute this phase. Here is the context from prior work:\n${workspaceContext}`
-    : "Execute this phase based on the context provided in the system prompt.";
+  // Build user message with input instructions + workspace context
+  let userMessage = "";
+  if (userInput) {
+    userMessage += `## User Instructions\n\nThe user provided the following direction for this workflow. Follow these instructions carefully and incorporate them into your approach:\n\n> ${userInput}\n\n`;
+  }
+  if (workspaceContext) {
+    userMessage += `## Context from Prior Work\n${workspaceContext}`;
+  }
+  if (!userMessage) {
+    userMessage = "Execute this phase based on the context provided in the system prompt.";
+  }
 
   return {
     messages: [
