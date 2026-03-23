@@ -3,10 +3,12 @@
 /**
  * Genesis bot caller as a Convex internal action.
  *
- * Runs in Node.js runtime where process.env is guaranteed to work.
- * Reads API keys directly from process.env -- no key passing needed.
+ * Runs in Node.js runtime. Reads API keys from the settings table
+ * via ctx.runQuery (process.env is NOT available when called from
+ * an HTTP action via ctx.runAction).
  */
 import { internalAction } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 
 export const callBot = internalAction({
@@ -15,12 +17,18 @@ export const callBot = internalAction({
     prompt: v.string(),
     temperature: v.optional(v.number()),
   },
-  handler: async (_ctx, args) => {
-    const apiKey = process.env.GENESIS_API_KEY;
-    const providerKey = process.env.GENESIS_ANTHROPIC_API_KEY;
+  handler: async (ctx, args) => {
+    // Read keys from settings table (no orgId = returns first record)
+    const settings: any = await ctx.runQuery(
+      internal.chat.internals.getSettings,
+      {},
+    );
+
+    const apiKey = settings?.genesisApiKey;
+    const providerKey = settings?.genesisProviderKey;
 
     if (!apiKey || !providerKey) {
-      return `Error: Genesis API keys not in env (apiKey: ${apiKey ? "set" : "MISSING"}, providerKey: ${providerKey ? "set" : "MISSING"}). Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY via npx convex env set.`;
+      return `Error: Genesis API keys not found in settings table. Add genesisApiKey and genesisProviderKey to a settings record.`;
     }
 
     const response = await fetch("https://gas.copycoders.ai/api/v1/chat/completions", {
