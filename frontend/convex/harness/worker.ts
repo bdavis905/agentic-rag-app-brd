@@ -577,6 +577,11 @@ async function completePhaseAndContinue(
           source: "harness",
         });
       }
+
+      // Save per-brief files when output contains brief-keyed items
+      if (output && typeof output === "object") {
+        await savePerBriefFiles(ctx, run, phase.name, output);
+      }
     }
   }
 
@@ -645,6 +650,167 @@ async function completePhaseAndContinue(
     runId: run._id,
     phaseIndex: phaseIndex + 1,
   });
+}
+
+/**
+ * Save per-brief files when output contains items keyed by brief_id.
+ * Creates briefs/{brief_id}/copy.md, briefs/{brief_id}/images.md, etc.
+ */
+async function savePerBriefFiles(
+  ctx: any,
+  run: any,
+  phaseName: string,
+  output: any,
+): Promise<void> {
+  // Determine which array to split and what type of content it is
+  const briefItems: Array<{ briefId: string; item: any; type: string }> = [];
+
+  if (Array.isArray(output.ads)) {
+    for (const ad of output.ads) {
+      const briefId = ad.brief_id || ad.briefId || `ad-${briefItems.length + 1}`;
+      briefItems.push({ briefId, item: ad, type: "copy" });
+    }
+  }
+  if (Array.isArray(output.image_concepts)) {
+    for (const img of output.image_concepts) {
+      const briefId = img.brief_id || img.briefId || `img-${briefItems.length + 1}`;
+      briefItems.push({ briefId, item: img, type: "images" });
+    }
+  }
+  if (Array.isArray(output.briefs)) {
+    for (const brief of output.briefs) {
+      const briefId = brief.id || brief.brief_id || `brief-${briefItems.length + 1}`;
+      briefItems.push({ briefId, item: brief, type: "brief" });
+    }
+  }
+
+  if (briefItems.length === 0) return;
+
+  // Group by briefId
+  const byBrief = new Map<string, Array<{ item: any; type: string }>>();
+  for (const { briefId, item, type } of briefItems) {
+    const slug = briefId.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
+    if (!byBrief.has(slug)) byBrief.set(slug, []);
+    byBrief.get(slug)!.push({ item, type });
+  }
+
+  for (const [slug, items] of byBrief) {
+    for (const { item, type } of items) {
+      const filePath = `briefs/${slug}/${type}.md`;
+      const md = renderBriefItemAsMarkdown(item, type);
+      if (md) {
+        await ctx.runMutation(internal.workspace.internals.writeFile, {
+          threadId: run.threadId,
+          orgId: run.orgId,
+          filePath,
+          content: md,
+          contentType: "text/markdown",
+          source: "harness",
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Render a single brief item (ad copy, image concept, or brief) as markdown.
+ */
+function renderBriefItemAsMarkdown(item: any, type: string): string | null {
+  const lines: string[] = [];
+
+  if (type === "copy") {
+    const seg = item.segment || "";
+    const awareness = item.awareness_level || "";
+    lines.push(`# Ad Copy — ${seg}${awareness ? ` (${awareness})` : ""}\n`);
+    if (item.concept) lines.push(`**Concept:** ${item.concept}`);
+    if (item.angle) lines.push(`**Angle:** ${item.angle}`);
+    if (item.genesis_bot_used) lines.push(`**Bot:** ${item.genesis_bot_used}`);
+    lines.push("");
+
+    if (Array.isArray(item.primaryTexts)) {
+      lines.push(`## Primary Texts (${item.primaryTexts.length} variations)\n`);
+      item.primaryTexts.forEach((text: string, i: number) => {
+        lines.push(`### Variation ${i + 1}\n`);
+        lines.push(text);
+        lines.push("\n---\n");
+      });
+    }
+
+    if (Array.isArray(item.headlines)) {
+      lines.push(`## Headlines\n`);
+      item.headlines.forEach((h: string, i: number) => {
+        const len = h.length;
+        const flag = len > 40 ? " ⚠️ OVER 40" : "";
+        lines.push(`${i + 1}. **${h}** _(${len} chars${flag})_`);
+      });
+      lines.push("");
+    }
+
+    if (item.description) {
+      lines.push(`## Description\n`);
+      lines.push(`> ${item.description}\n`);
+    }
+
+    // Legacy format
+    if (Array.isArray(item.copy?.hooks)) {
+      lines.push(`## Hooks\n`);
+      item.copy.hooks.forEach((h: string, i: number) => lines.push(`${i + 1}. ${h}`));
+      lines.push("");
+    }
+    if (item.copy?.body) lines.push(`## Body\n\n${item.copy.body}\n`);
+    if (item.copy?.full_text) lines.push(`## Full Text\n\n${item.copy.full_text}\n`);
+
+  } else if (type === "images") {
+    lines.push(`# Image Concept\n`);
+    if (item.ad_hook) lines.push(`**Hook:** ${item.ad_hook}`);
+    if (item.format_recommendation) lines.push(`**Format:** ${item.format_recommendation}`);
+    if (item.image_bot_used) lines.push(`**Bot:** ${item.image_bot_used}`);
+    lines.push("");
+
+    if (item.concept) {
+      if (item.concept.description) lines.push(`## Concept\n\n${item.concept.description}\n`);
+      if (item.concept.text_overlay) lines.push(`**Text overlay:** ${item.concept.text_overlay}`);
+      if (item.concept.style_notes) lines.push(`**Style:** ${item.concept.style_notes}`);
+      if (item.concept.aspect_ratio) lines.push(`**Aspect ratio:** ${item.concept.aspect_ratio}`);
+      lines.push("");
+    }
+
+    if (item.image_prompt) {
+      lines.push(`## Image Prompt\n`);
+      lines.push("```");
+      lines.push(item.image_prompt);
+      lines.push("```\n");
+    }
+
+  } else if (type === "brief") {
+    const seg = item.gap?.segment || item.segment || "";
+    lines.push(`# Creative Brief — ${seg}\n`);
+    if (item.awareness_level) lines.push(`**Awareness:** ${item.awareness_level}`);
+    if (item.concept_category) lines.push(`**Concept:** ${item.concept_category} — ${item.specific_concept || ""}`);
+    if (item.angle) lines.push(`**Angle:** ${item.angle}`);
+    if (item.style) lines.push(`**Style:** ${item.style}`);
+    lines.push("");
+    if (item.hook_direction) lines.push(`## Hook Direction\n\n${item.hook_direction}\n`);
+    if (item.body_structure) lines.push(`## Body Structure\n\n${item.body_structure}\n`);
+    if (item.visual_direction) lines.push(`## Visual Direction\n\n${item.visual_direction}\n`);
+    if (item.cta_approach) lines.push(`## CTA\n\n${item.cta_approach}\n`);
+    if (item.target_segment) {
+      lines.push(`## Target Segment\n`);
+      if (item.target_segment.name) lines.push(`**Name:** ${item.target_segment.name}`);
+      if (item.target_segment.demographics) lines.push(`**Demographics:** ${item.target_segment.demographics}`);
+      if (Array.isArray(item.target_segment.pains)) {
+        lines.push(`**Pains:**`);
+        item.target_segment.pains.forEach((p: string) => lines.push(`- ${p}`));
+      }
+      if (Array.isArray(item.target_segment.desires)) {
+        lines.push(`**Desires:**`);
+        item.target_segment.desires.forEach((d: string) => lines.push(`- ${d}`));
+      }
+      lines.push("");
+    }
+  }
+
+  return lines.length > 1 ? lines.join("\n") : null;
 }
 
 /**
