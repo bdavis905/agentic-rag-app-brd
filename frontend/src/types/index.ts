@@ -112,10 +112,11 @@ export interface HarnessPhaseState {
   phaseIndex: number;
   phaseName: string;
   phaseDescription: string;
-  status: "running" | "completed" | "error";
+  status: "pending" | "running" | "completed" | "error" | "cancelled";
   resultMarkdown: string;
   toolCalls: HarnessToolCall[];
   error?: string;
+  streamingText?: string;
   agentRound?: number;
   agentMaxRounds?: number;
   subAgents?: HarnessSubAgent[];
