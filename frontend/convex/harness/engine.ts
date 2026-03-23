@@ -11,7 +11,7 @@
 import type { HarnessDefinition } from "./types";
 import { internal } from "../_generated/api";
 
-interface HarnessContext {
+export interface HarnessContext {
   ctx: any;
   threadId: any;
   orgId?: string;
@@ -255,7 +255,7 @@ export async function executeHarness(
 
 // ─── Streaming LLM Call with Tool-Calling Loop ──────────────────
 
-interface StreamResult {
+export interface StreamResult {
   content: string;
   toolCalls: Array<{ id: string; name: string; arguments: string }>;
   finishReason: string;
@@ -264,7 +264,7 @@ interface StreamResult {
 /**
  * Make a streaming LLM call and return content + tool calls.
  */
-async function streamLlmCall(
+export async function streamLlmCall(
   url: string,
   apiKey: string,
   body: any,
@@ -362,7 +362,7 @@ async function streamLlmCall(
 /**
  * Execute a harness tool call. Routes to the appropriate backend function.
  */
-async function executeHarnessTool(
+export async function executeHarnessTool(
   hctx: HarnessContext,
   toolName: string,
   args: Record<string, any>,
@@ -787,7 +787,7 @@ async function runPhaseBatchAgents(
 /**
  * Substitute $variables in a template string.
  */
-function substituteTemplate(
+export function substituteTemplate(
   template: string,
   priorResults: Record<string, any>,
   _phaseIndex: number,
@@ -815,7 +815,7 @@ function substituteTemplate(
 /**
  * Try to parse JSON from LLM output. Handles markdown code fences.
  */
-function parseStructuredOutput(text: string): any {
+export function parseStructuredOutput(text: string): any {
   // Try direct JSON parse first
   const trimmed = text.trim();
   try {
@@ -841,7 +841,7 @@ function parseStructuredOutput(text: string): any {
 /**
  * Generate a markdown summary of a phase result.
  */
-function generatePhaseMarkdown(phaseName: string, output: any): string {
+export function generatePhaseMarkdown(phaseName: string, output: any): string {
   if (typeof output === "string") {
     return `### ${phaseName}\n\n${output}`;
   }

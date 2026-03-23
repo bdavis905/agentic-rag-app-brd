@@ -199,19 +199,56 @@ export default defineSchema({
   harnessRuns: defineTable({
     threadId: v.id("threads"),
     orgId: v.optional(v.string()),
+    userId: v.optional(v.string()),
     harnessType: v.string(),
     status: v.union(
       v.literal("running"),
       v.literal("completed"),
       v.literal("failed"),
-      v.literal("paused")
+      v.literal("paused"),
+      v.literal("cancelled")
     ),
     currentPhase: v.number(),
     phaseResults: v.optional(v.any()),
     inputFiles: v.optional(v.array(v.string())),
     config: v.optional(v.any()),
     error: v.optional(v.string()),
+    cancelRequested: v.optional(v.boolean()),
+    definition: v.optional(v.any()),
+    offerSlug: v.optional(v.string()),
   }).index("by_thread", ["threadId"]),
+
+  harnessPhases: defineTable({
+    runId: v.id("harnessRuns"),
+    phaseIndex: v.number(),
+    phaseName: v.string(),
+    phaseDescription: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    ),
+    output: v.optional(v.any()),
+    error: v.optional(v.string()),
+    toolCalls: v.optional(v.array(v.object({
+      toolName: v.string(),
+      arguments: v.optional(v.string()),
+      resultSummary: v.optional(v.string()),
+      status: v.string(),
+    }))),
+    batchProgress: v.optional(v.object({
+      processed: v.number(),
+      total: v.number(),
+    })),
+    streamingText: v.optional(v.string()),
+    messages: v.optional(v.any()),
+    currentRound: v.optional(v.number()),
+    genesisBotResults: v.optional(v.any()),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_phase", ["runId", "phaseIndex"]),
 
   // ─── Foundation Docs (Per-Org, Per-Offer Persistent Knowledge) ──
 

@@ -1724,7 +1724,7 @@ async function runChatLoop(params: {
   const llmBaseUrl = settings?.llmBaseUrl || process.env.LLM_BASE_URL || null;
   const llmConfig = { apiKey, baseUrl: llmBaseUrl, model: llmModel };
 
-  // ─── Harness Mode: Route to harness engine instead of chat loop ───
+  // ─── Harness Mode: Launch background worker, return immediately ───
   if (harnessMode) {
     const harnessDefinitions: Record<string, any> = {
       contract_review: contractReviewHarness,
@@ -1740,38 +1740,19 @@ async function runChatLoop(params: {
       return;
     }
 
-    // Write the user's message to workspace as the input document
-    await ctx.runMutation(internal.workspace.internals.writeFile, {
+    // Start harness via internal mutation -- creates run record, phases, todos, schedules worker
+    const runId = await ctx.runMutation(internal.harness.mutations.internalStartHarness, {
       threadId,
       orgId,
-      filePath: "input.txt",
-      content,
-      contentType: "text/plain",
-      source: "user",
-    });
-    emit("workspace_file_written", {
-      file_path: "input.txt",
-      content_type: "text/plain",
-      size_bytes: new TextEncoder().encode(content).length,
-      source: "user",
-    });
-
-    await executeHarness(
-      {
-        ctx, threadId, orgId, offerSlug, userId, apiKey, baseUrl: llmBaseUrl, model: llmModel, emit,
-        genesisApiKey: undefined,
-        genesisProviderKey: undefined,
-      },
+      userId,
+      harnessType: harnessMode,
       definition,
-      ["input.txt"],
-    );
-
-    // Store a summary message
-    await ctx.runMutation(internal.chat.internals.addMessage, {
-      threadId,
-      role: "assistant",
-      content: `Harness workflow "${definition.name}" completed. Check the workspace panel for detailed results.`,
+      offerSlug,
+      input: content,
     });
+
+    // Emit harness_started so frontend subscribes to the run
+    emit("harness_started", { runId });
 
     // Generate title for new threads
     const messageCount = await ctx.runQuery(
@@ -1946,6 +1927,7 @@ function buildStreamingResponse(
   chatFn: (emit: (type: string, data?: Record<string, any>) => void) => Promise<void>,
 ): Response {
   const encoder = new TextEncoder();
+  const HEARTBEAT_MS = 10000;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -1955,11 +1937,20 @@ function buildStreamingResponse(
         );
       }
 
+      const heartbeat = setInterval(() => {
+        try {
+          emit("heartbeat");
+        } catch {
+          clearInterval(heartbeat);
+        }
+      }, HEARTBEAT_MS);
+
       try {
         await chatFn(emit);
       } catch (e: any) {
         emit("error", { error: e.message ?? "Unknown error" });
       } finally {
+        clearInterval(heartbeat);
         controller.close();
       }
     },

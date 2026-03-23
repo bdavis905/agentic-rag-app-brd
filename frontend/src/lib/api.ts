@@ -47,6 +47,7 @@ export interface SendMessageOptions {
   onPlanUpdate?: (todos: Array<{ content: string; status: string; position: number }>) => void;
   onWorkspaceFileWritten?: (file: { file_path: string; content_type: string; size_bytes: number; source: string }) => void;
   // Harness events
+  onHarnessStarted?: (runId: string) => void;
   onHarnessPhaseStart?: (phaseIndex: number, phaseName: string, phaseDescription: string) => void;
   onHarnessPhaseComplete?: (phaseIndex: number, phaseName: string, resultSummary: string, resultMarkdown?: string) => void;
   onHarnessPhaseError?: (phaseIndex: number, phaseName: string, error: string) => void;
@@ -57,7 +58,7 @@ export interface SendMessageOptions {
 
 /** Derive the Convex HTTP Action URL from the deployment URL */
 function getHttpUrl(): string {
-  const convexUrl = import.meta.env.VITE_CONVEX_URL as string;
+  const convexUrl = (import.meta.env.VITE_CONVEX_URL as string).trim();
   return convexUrl.replace(".convex.cloud", ".convex.site");
 }
 
@@ -92,6 +93,7 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
     onThreadTitle,
     onPlanUpdate,
     onWorkspaceFileWritten,
+    onHarnessStarted,
     onHarnessPhaseStart,
     onHarnessPhaseComplete,
     onHarnessPhaseError,
@@ -238,6 +240,9 @@ export async function sendMessage(options: SendMessageOptions): Promise<void> {
             });
             break;
           // Harness events
+          case "harness_started":
+            onHarnessStarted?.(event.runId ?? "");
+            break;
           case "harness_phase_start":
             onHarnessPhaseStart?.(
               event.phase_index ?? 0,

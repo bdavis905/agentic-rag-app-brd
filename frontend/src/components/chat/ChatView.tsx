@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useQuery } from 'convex/react'
+import { useQuery, useMutation } from 'convex/react'
 import { useAuth as useClerkAuth } from '@clerk/clerk-react'
 import { Send, Square, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -116,6 +116,7 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
 
   const { getToken } = useClerkAuth()
   const { activeOrgId } = useOrg()
+  const cancelHarness = useMutation(api.harness.mutations.cancelRun)
   const dbMessages = useQuery(
     api.chat.queries.getMessages,
     activeOrgId ? { orgId: activeOrgId, threadId: threadId as any } : "skip"
@@ -130,6 +131,48 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
     api.workspace.queries.listFiles,
     activeOrgId ? { threadId: threadId as any, orgId: activeOrgId } : "skip"
   )
+
+  // Reactive harness run subscription
+  const dbHarnessRun = useQuery(
+    api.harness.queries.getActiveRun,
+    { threadId: threadId as any }
+  )
+  const dbHarnessPhases = useQuery(
+    api.harness.queries.getPhases,
+    dbHarnessRun?._id ? { runId: dbHarnessRun._id } : "skip"
+  )
+
+  // Sync DB harness phases to conversation state
+  useEffect(() => {
+    if (!dbHarnessPhases || dbHarnessPhases.length === 0) return
+
+    const harnessId = `harness-${dbHarnessRun?._id ?? 'active'}`
+    const phases: HarnessPhaseState[] = dbHarnessPhases.map((p: any) => ({
+      phaseIndex: p.phaseIndex,
+      phaseName: p.phaseName,
+      phaseDescription: p.phaseDescription ?? '',
+      status: p.status as any,
+      resultMarkdown: p.status === 'completed' ? '_Phase complete._' : p.streamingText ?? '',
+      toolCalls: (p.toolCalls ?? []).map((tc: any) => ({
+        tool_name: tc.toolName,
+        arguments: tc.arguments ?? '',
+        result_summary: tc.resultSummary,
+        status: tc.status,
+      })),
+      batchProgress: p.batchProgress,
+      error: p.error,
+    }))
+
+    setConversation(prev => {
+      const existing = prev.find(item => item.id === harnessId)
+      if (existing && existing.type === 'harness') {
+        return prev.map(item =>
+          item.id === harnessId ? { ...item, phases } : item
+        )
+      }
+      return [...prev, { type: 'harness' as const, id: harnessId, phases }]
+    })
+  }, [dbHarnessPhases, dbHarnessRun])
 
   // Sync DB todos to state (SSE updates during streaming, DB persists)
   useEffect(() => {
@@ -616,29 +659,10 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
-    // Mark any running harness phases and tool calls as stopped
-    setConversation(prev =>
-      prev.map(item => {
-        if (item.type !== 'harness') return item
-        const hasRunning = item.phases.some(p => p.status === 'running')
-        if (!hasRunning) return item
-        return {
-          ...item,
-          phases: item.phases.map(p =>
-            p.status === 'running'
-              ? {
-                  ...p,
-                  status: 'error' as const,
-                  resultMarkdown: '_Stopped by user._',
-                  toolCalls: p.toolCalls.map(tc =>
-                    tc.status === 'running' ? { ...tc, status: 'error' as const, result: 'Stopped' } : tc
-                  ),
-                }
-              : p
-          ),
-        }
-      })
-    )
+    // Cancel background harness run if active
+    if (dbHarnessRun?._id && dbHarnessRun.status === 'running') {
+      cancelHarness({ runId: dbHarnessRun._id }).catch(() => {})
+    }
   }
 
   if (loading) {
@@ -791,14 +815,14 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
                 onModeChange={setDeepMode}
                 disabled={sending}
               />
-              {sending ? (
+              {(sending || dbHarnessRun?.status === 'running') ? (
                 <Button
                   type="button"
                   variant="destructive"
                   size="icon"
                   className="rounded-full h-9 w-9 transition-all duration-200 btn-press"
                   onClick={handleStop}
-                  title="Stop generating"
+                  title={dbHarnessRun?.status === 'running' ? 'Cancel harness' : 'Stop generating'}
                 >
                   <Square className="h-4 w-4" />
                 </Button>
