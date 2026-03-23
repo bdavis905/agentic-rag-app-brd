@@ -126,18 +126,51 @@ export async function executeHarness(
         }
 
         // Write foundation docs if configured
-        if (phase.foundationOutputs?.length && orgId && hctx.offerSlug && phaseOutput && typeof phaseOutput === "object") {
-          for (const { key, docType } of phase.foundationOutputs) {
-            const value = phaseOutput[key];
-            if (value) {
-              const content = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-              await ctx.runMutation(internal.foundationDocs.internals.upsert, {
-                orgId,
-                offerSlug: hctx.offerSlug,
-                docType,
-                content,
-                sourceBot: phaseOutput[`${key}_source_bot`] ?? undefined,
-              });
+        if (phase.foundationOutputs?.length && orgId && hctx.offerSlug) {
+          // Bot slug -> docType mapping for direct saves
+          const botSlugToDocType: Record<string, string> = {
+            "build-a-buyer-elite-": "build-a-buyer",
+            "pain-matrix-core-wound-bot-copy": "pain-matrix",
+            "universal-mechanism-bot": "mechanism",
+            "copy-blocks-extract": "copy-blocks",
+            "deep-dive-voice-analyzer": "voice-profile",
+          };
+
+          // First try: save from LLM's structured JSON output
+          if (phaseOutput && typeof phaseOutput === "object") {
+            for (const { key, docType } of phase.foundationOutputs) {
+              const value = phaseOutput[key];
+              if (value) {
+                const content = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+                await ctx.runMutation(internal.foundationDocs.internals.upsert, {
+                  orgId,
+                  offerSlug: hctx.offerSlug,
+                  docType,
+                  content,
+                  sourceBot: phaseOutput[`${key}_source_bot`] ?? undefined,
+                });
+              }
+            }
+          }
+
+          // Fallback: save directly from cached Genesis bot results
+          // This ensures docs are saved even if the LLM fails to produce JSON output
+          if (hctx.genesisBotResults) {
+            for (const [botSlug, result] of Object.entries(hctx.genesisBotResults)) {
+              const docType = botSlugToDocType[botSlug];
+              if (!docType || !result || result.startsWith("Error:")) continue;
+              // Only save if not already saved by the LLM output path above
+              const alreadySaved = phaseOutput && typeof phaseOutput === "object" &&
+                phase.foundationOutputs.some(fo => fo.docType === docType && phaseOutput[fo.key]);
+              if (!alreadySaved) {
+                await ctx.runMutation(internal.foundationDocs.internals.upsert, {
+                  orgId,
+                  offerSlug: hctx.offerSlug,
+                  docType,
+                  content: result,
+                  sourceBot: botSlug,
+                });
+              }
             }
           }
         }
@@ -566,7 +599,12 @@ async function runPhaseLlmSingle(
         for (let i = 0; i < genesisCalls.length; i++) {
           const tc = genesisCalls[i];
           const toolResult = genesisResults[i];
-          messages.push({ role: "tool", tool_call_id: tc.id, content: toolResult });
+          // For LLM context, send a summary + first 2000 chars to avoid context overflow.
+          // The full result is stored in hctx.genesisBotResults for direct foundation doc saving.
+          const contextResult = toolResult.length > 2000
+            ? `[Full output: ${toolResult.length} chars -- saved directly to foundation docs]\n\n${toolResult.slice(0, 2000)}\n\n[... truncated for context window -- full output preserved]`
+            : toolResult;
+          messages.push({ role: "tool", tool_call_id: tc.id, content: contextResult });
           const resultSummary = toolResult.length > 200 ? toolResult.slice(0, 200) + "..." : toolResult;
           emit("tool_call_complete", { tool_name: tc.name, result_summary: resultSummary });
         }
