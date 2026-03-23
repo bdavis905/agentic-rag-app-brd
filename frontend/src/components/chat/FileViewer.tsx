@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { X, Download, Eye, Code } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { X, Download, Eye, Code, Copy, Check } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { WorkspaceFile } from '@/types'
@@ -14,8 +14,34 @@ interface FileViewerProps {
   onClose: () => void
 }
 
+/** Human-readable labels for foundation doc types */
+const DOC_TYPE_LABELS: Record<string, string> = {
+  build_a_buyer: 'Build-A-Buyer Profile',
+  pain_matrix: 'Pain Matrix & Core Wound',
+  mechanism: 'Unique Mechanism',
+  offer_brief: 'Offer Brief',
+  copy_blocks: 'Copy Blocks',
+  voice_profile: 'Voice Profile',
+}
+
+/** Check if a string looks like it contains markdown content */
+function looksLikeMarkdown(str: string): boolean {
+  if (str.length < 20) return false
+  return /^#{1,6}\s/m.test(str) || /\*\*[^*]+\*\*/m.test(str) || /\n[-*]\s/m.test(str) || /\n\d+\.\s/m.test(str)
+}
+
+/** Format a JSON key into a readable section title */
+function formatKeyTitle(key: string): string {
+  if (DOC_TYPE_LABELS[key]) return DOC_TYPE_LABELS[key]
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 export function FileViewer({ file, threadId, orgId, onClose }: FileViewerProps) {
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
+  const [copied, setCopied] = useState(false)
 
   const fileData = useQuery(api.workspace.queries.getFile, {
     threadId: threadId as Id<'threads'>,
@@ -37,6 +63,101 @@ export function FileViewer({ file, threadId, orgId, onClose }: FileViewerProps) 
   const isHtml = file.contentType === 'text/html' || file.filePath.endsWith('.html')
   const isJson = file.contentType === 'application/json' || file.filePath.endsWith('.json')
 
+  // Check if JSON contains markdown-rich string values worth rendering
+  const jsonHasMarkdown = isJson && (() => {
+    try {
+      const parsed = JSON.parse(content)
+      if (typeof parsed !== 'object' || parsed === null) return false
+      return Object.values(parsed).some(
+        (v) => typeof v === 'string' && looksLikeMarkdown(v)
+      )
+    } catch {
+      return false
+    }
+  })()
+
+  const hasPreviewMode = isMarkdown || isHtml || jsonHasMarkdown
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea')
+      textarea.value = content
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }, [content])
+
+  /** Render JSON in preview mode — markdown values as rendered sections */
+  const renderJsonPreview = () => {
+    try {
+      const parsed = JSON.parse(content)
+      if (typeof parsed !== 'object' || parsed === null) {
+        return <pre className="text-sm font-mono text-foreground/90 whitespace-pre-wrap">{content}</pre>
+      }
+
+      const entries = Object.entries(parsed)
+      // Filter to show markdown-rich string values as rendered sections,
+      // and collect metadata/non-markdown fields separately
+      const markdownEntries: [string, string][] = []
+      const metadataEntries: [string, any][] = []
+
+      for (const [key, value] of entries) {
+        if (key.endsWith('_source_bot') || key.startsWith('_')) continue
+        if (typeof value === 'string' && looksLikeMarkdown(value)) {
+          markdownEntries.push([key, value])
+        } else {
+          metadataEntries.push([key, value])
+        }
+      }
+
+      return (
+        <div className="space-y-8">
+          {markdownEntries.map(([key, value]) => (
+            <div key={key} className="border-b border-border/30 pb-6 last:border-0">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-semibold text-foreground">
+                  {formatKeyTitle(key)}
+                </h2>
+                <button
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(value)
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-1 rounded hover:bg-muted/50 transition-colors"
+                  title="Copy this section"
+                >
+                  <Copy className="h-3 w-3" />
+                  Copy
+                </button>
+              </div>
+              <div className="prose prose-invert prose-sm max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
+              </div>
+            </div>
+          ))}
+          {metadataEntries.length > 0 && (
+            <div className="border-t border-border/30 pt-4">
+              <h3 className="text-sm font-medium text-muted-foreground mb-2">Metadata</h3>
+              <pre className="text-xs font-mono text-foreground/70 whitespace-pre-wrap">
+                {JSON.stringify(Object.fromEntries(metadataEntries), null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )
+    } catch {
+      return <pre className="text-sm font-mono text-foreground/90 whitespace-pre-wrap">{content}</pre>
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -52,7 +173,7 @@ export function FileViewer({ file, threadId, orgId, onClose }: FileViewerProps) 
             <span className="text-xs text-muted-foreground shrink-0">{file.contentType}</span>
           </div>
           <div className="flex items-center gap-2">
-            {(isMarkdown || isHtml) && (
+            {hasPreviewMode && (
               <div className="flex rounded-lg border border-border/50 overflow-hidden">
                 <button
                   onClick={() => setViewMode('preview')}
@@ -70,6 +191,13 @@ export function FileViewer({ file, threadId, orgId, onClose }: FileViewerProps) 
                 </button>
               </div>
             )}
+            <button
+              onClick={handleCopy}
+              className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+              title="Copy to clipboard"
+            >
+              {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+            </button>
             <button
               onClick={() => {
                 const blob = new Blob([content], { type: file.contentType })
@@ -100,14 +228,18 @@ export function FileViewer({ file, threadId, orgId, onClose }: FileViewerProps) 
             <div className="flex items-center justify-center h-full text-muted-foreground">
               Loading...
             </div>
-          ) : (isMarkdown || isHtml) && viewMode === 'preview' ? (
-            <div className="prose prose-invert prose-sm max-w-none">
-              {isMarkdown ? (
+          ) : hasPreviewMode && viewMode === 'preview' ? (
+            isMarkdown ? (
+              <div className="prose prose-invert prose-sm max-w-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-              ) : (
+              </div>
+            ) : isHtml ? (
+              <div className="prose prose-invert prose-sm max-w-none">
                 <div dangerouslySetInnerHTML={{ __html: content }} />
-              )}
-            </div>
+              </div>
+            ) : jsonHasMarkdown ? (
+              renderJsonPreview()
+            ) : null
           ) : isJson ? (
             <pre className="text-sm font-mono text-foreground/90 whitespace-pre-wrap">
               {(() => {

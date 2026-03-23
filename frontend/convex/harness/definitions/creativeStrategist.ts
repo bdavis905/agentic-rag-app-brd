@@ -154,19 +154,29 @@ export const creativeStrategistHarness: HarnessDefinition = {
       model: "openai/gpt-4o-mini",
       tools: ragTools,
       maxRounds: 10,
-      systemPromptTemplate: `You are a creative strategy context retriever. Your job is to search the document library thoroughly and compile a comprehensive client context package.
+      foundationInputs: ["build-a-buyer", "pain-matrix", "mechanism", "offer-brief", "copy-blocks", "voice-profile"],
+      systemPromptTemplate: `You are a creative strategy context retriever. Your job is to compile a comprehensive client context package using foundation documents AND the document library.
 
-You MUST make multiple search queries to cover all areas. Do not stop after one search. Be aggressive with retrieval -- the downstream phases depend entirely on the quality of context you pull.
+## Foundation Documents (PRIMARY SOURCE)
+
+You have been provided with foundation documents below (Build-A-Buyer, Pain Matrix, Mechanism, Offer Brief, Copy Blocks, Voice Profile). These are your PRIMARY source of context — they contain deep research on the buyer psychology, pain points, unique mechanism, offer details, persuasive elements, and brand voice.
+
+USE THESE FIRST. Then supplement with RAG searches for any gaps, especially:
+- Compliance/legal info not in foundation docs
+- Specific ad performance data or winners
+- Competitor intel
+- Any details the foundation docs flag as missing
 
 CRITICAL RULES:
 - You are ONLY retrieving context. Do NOT write ads, copy, or briefs. That happens in later phases.
 - Your ONLY job is to search documents and compile findings into the JSON schema below.
 - Only use the tools provided: search_documents, ls, tree, grep, glob, read. Do NOT call any other tools.
 - You MUST respond with ONLY the JSON object at the end. No other text, no analysis, no recommendations.
+- MERGE foundation doc insights with RAG search results — foundation docs take priority for buyer psychology, pain points, mechanism, and voice.
 
 ## Retrieval Strategy
 
-Execute these searches in order. Use different query phrasings for each area:
+Execute these searches to SUPPLEMENT foundation docs. Focus on areas not covered:
 
 ### 1. Brand Voice & DNA
 - Search for: brand voice, brand guidelines, tone, messaging, brand DNA, style guide
@@ -249,7 +259,7 @@ Respond with a JSON object:
   "sources_used": ["string (document names you pulled from)"]
 }
 
-IMPORTANT: Every field must be populated with REAL data from the documents, not placeholders. If you can't find information for a section, note "NOT FOUND IN DOCUMENTS" so downstream phases know to work around the gap.`,
+IMPORTANT: Every field must be populated with REAL data from the foundation docs and/or document library, not placeholders. If you can't find information for a section, note "NOT FOUND IN DOCUMENTS" so downstream phases know to work around the gap. Foundation docs are your richest source — use them heavily for segments, pain points, desires, mechanism, and voice.`,
       workspaceOutput: "client-context.json",
     },
 
@@ -261,7 +271,10 @@ IMPORTANT: Every field must be populated with REAL data from the documents, not 
       model: "openai/gpt-4o-mini",
       tools: ragTools,
       maxRounds: 6,
+      foundationInputs: ["build-a-buyer", "offer-brief"],
       systemPromptTemplate: `You are a performance intel synthesizer for Facebook ads. Your job is to search for and analyze all available performance data in the document library.
+
+You have been provided with foundation documents (Build-A-Buyer and Offer Brief) for context on audience segments and offer details. Use these to correctly map ad performance to segments and concepts.
 
 Search for performance data documents -- these may be titled things like "winners", "performance", "phase analytics", "ad metrics", "campaign data", "Adzara", "results".
 
@@ -339,7 +352,7 @@ If no performance data is found in the document library, return the structure wi
       description: "Map the creative grid and identify untested segments, awareness levels, concepts, and angles",
       type: "llm_single",
       model: "anthropic/claude-opus-4.6",
-      foundationInputs: ["build-a-buyer", "offer-brief"],
+      foundationInputs: ["build-a-buyer", "pain-matrix", "mechanism", "offer-brief", "copy-blocks", "voice-profile"],
       systemPromptTemplate: `You are a creative coverage strategist. You analyze the full creative landscape and identify gaps in ad coverage using the Creative Strategist Flywheel framework.
 
 ## Input Data
@@ -460,7 +473,7 @@ Focus on the TOP 10 gaps. Don't try to fill every cell -- prioritize the highest
       model: "anthropic/claude-opus-4.6",
       tools: [genesisBotTool],
       maxRounds: 8,
-      foundationInputs: ["build-a-buyer", "offer-brief"],
+      foundationInputs: ["build-a-buyer", "pain-matrix", "mechanism", "offer-brief", "copy-blocks", "voice-profile"],
       systemPromptTemplate: `You are a creative brief orchestrator. Your job is to take the top priority gaps from the coverage analysis and generate detailed creative briefs using the Genesis autobrief-bot.
 
 ## Input Data

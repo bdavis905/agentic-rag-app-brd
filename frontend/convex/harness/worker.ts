@@ -467,6 +467,8 @@ async function completePhaseAndContinue(
 
   // Save foundation docs if configured
   const offerSlug = run.offerSlug || "default";
+  const savedFoundationDocs: Array<{ docType: string; content: string }> = [];
+
   if (phase.foundationOutputs?.length && run.orgId) {
     // From structured output
     if (output && typeof output === "object") {
@@ -481,6 +483,7 @@ async function completePhaseAndContinue(
             content,
             sourceBot: output[`${key}_source_bot`] ?? undefined,
           });
+          savedFoundationDocs.push({ docType, content });
         }
       }
     }
@@ -504,9 +507,22 @@ async function completePhaseAndContinue(
             content: result as string,
             sourceBot: slug,
           });
+          savedFoundationDocs.push({ docType, content: result as string });
         }
       }
     }
+  }
+
+  // Save each foundation doc as an individual .md workspace file for easy viewing
+  for (const { docType, content } of savedFoundationDocs) {
+    await ctx.runMutation(internal.workspace.internals.writeFile, {
+      threadId: run.threadId,
+      orgId: run.orgId,
+      filePath: `docs/${docType}.md`,
+      content,
+      contentType: "text/markdown",
+      source: "harness",
+    });
   }
 
   // Schedule next phase
