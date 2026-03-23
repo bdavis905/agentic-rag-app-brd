@@ -10,20 +10,6 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 
-/**
- * Read Genesis API keys from env vars (runs in Node.js runtime).
- * Called once at the start of harness execution to get the keys.
- */
-export const getGenesisKeys = internalAction({
-  args: {},
-  handler: async () => {
-    return {
-      apiKey: process.env.GENESIS_API_KEY ?? null,
-      providerKey: process.env.GENESIS_ANTHROPIC_API_KEY ?? null,
-    };
-  },
-});
-
 export const callBot = internalAction({
   args: {
     botSlug: v.string(),

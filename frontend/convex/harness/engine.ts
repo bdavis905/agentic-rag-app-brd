@@ -405,20 +405,10 @@ async function executeHarnessTool(
     });
   }
 
-  // ── Genesis Bot (runs as separate Convex action) ──
+  // ── Genesis Bot ──
   if (toolName === "call_genesis_bot") {
-    // Get Genesis keys via Node.js action (env vars), cached on hctx
     if (!hctx.genesisApiKey || !hctx.genesisProviderKey) {
-      try {
-        const keys: any = await ctx.runAction(internal.harness.genesisAction.getGenesisKeys, {});
-        if (keys?.apiKey) hctx.genesisApiKey = keys.apiKey;
-        if (keys?.providerKey) hctx.genesisProviderKey = keys.providerKey;
-      } catch (e: any) {
-        return `Error fetching Genesis keys: ${e.message}`;
-      }
-    }
-    if (!hctx.genesisApiKey || !hctx.genesisProviderKey) {
-      return `Error: Genesis API keys not available (apiKey: ${hctx.genesisApiKey ? "set" : "missing"}, providerKey: ${hctx.genesisProviderKey ? "set" : "missing"}). Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex env vars.`;
+      return "Error: Genesis API keys not configured. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex env vars.";
     }
     return await ctx.runAction(internal.harness.genesisAction.callBot, {
       botSlug: args.bot_slug ?? "",
@@ -430,77 +420,6 @@ async function executeHarnessTool(
   }
 
   return `Error: Unknown tool '${toolName}'. Available tools: search_documents, ls, tree, grep, glob, read, call_genesis_bot. Use 'read' with a document_id to read full document content.`;
-}
-
-/**
- * Call a Genesis copywriting/research bot via the OpenClaw API.
- * Uses streaming to avoid timeout on long-running bot operations.
- */
-async function callGenesisBot(
-  args: { bot_slug: string; prompt: string; temperature?: number },
-  genesisApiKey?: string,
-  genesisProviderKey?: string,
-): Promise<string> {
-  // Try passed params first, then env vars, then hardcoded fallback
-  const apiKey = genesisApiKey || process.env.GENESIS_API_KEY || process.env["GENESIS_API_KEY"];
-  const providerKey = genesisProviderKey || process.env.GENESIS_ANTHROPIC_API_KEY || process.env["GENESIS_ANTHROPIC_API_KEY"];
-
-  if (!apiKey || !providerKey) {
-    // Debug: log all available env var keys to diagnose
-    const envKeys = Object.keys(process.env || {}).filter(k => k.includes("GENESIS") || k.includes("LLM") || k.includes("API"));
-    return `Error: Genesis API keys not configured (apiKey: ${apiKey ? 'set' : 'missing'}, providerKey: ${providerKey ? 'set' : 'missing'}). Available env keys: [${envKeys.join(', ')}]. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex environment.`;
-  }
-
-  const response = await fetch("https://gas.copycoders.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
-      "X-Provider-Key": providerKey,
-    },
-    body: JSON.stringify({
-      model: args.bot_slug,
-      messages: [{ role: "user", content: args.prompt }],
-      stream: true,
-      temperature: args.temperature ?? 0.7,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    return `Error calling Genesis bot '${args.bot_slug}': ${response.status} ${errorText}`;
-  }
-
-  // Collect streamed response
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let content = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop()!;
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === "data: [DONE]") continue;
-      if (!trimmed.startsWith("data: ")) continue;
-
-      try {
-        const chunk = JSON.parse(trimmed.slice(6));
-        const delta = chunk.choices?.[0]?.delta?.content;
-        if (delta) content += delta;
-      } catch {
-        continue;
-      }
-    }
-  }
-
-  return content || "Error: No response from Genesis bot.";
 }
 
 // ─── Phase Runners ──────────────────────────────────────────────
