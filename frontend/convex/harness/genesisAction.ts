@@ -16,19 +16,21 @@ export const callBot = internalAction({
     botSlug: v.string(),
     prompt: v.string(),
     temperature: v.optional(v.number()),
+    orgId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Read keys from settings table (no orgId = returns first record)
+    // Read org settings first, then fall back to any settings row
+    // that already has Genesis keys configured.
     const settings: any = await ctx.runQuery(
-      internal.chat.internals.getSettings,
-      {},
+      internal.settings.queries.getGenesisSettings,
+      { orgId: args.orgId },
     );
 
     const apiKey = settings?.genesisApiKey;
     const providerKey = settings?.genesisProviderKey;
 
     if (!apiKey || !providerKey) {
-      return `Error: Genesis API keys not found in settings table. Add genesisApiKey and genesisProviderKey to a settings record.`;
+      return "Error: Genesis API keys are not configured for this organization.";
     }
 
     const response = await fetch("https://gas.copycoders.ai/api/v1/chat/completions", {
@@ -48,16 +50,29 @@ export const callBot = internalAction({
 
     if (!response.ok) {
       const errorText = await response.text();
+      if (
+        response.status === 429 &&
+        errorText.includes("active session")
+      ) {
+        return "Error: Genesis API key is currently busy with an active streaming session. Revoke access in Genesis Server or wait for the active session to end, then retry.";
+      }
       return `Error calling Genesis bot '${args.botSlug}': ${response.status} ${errorText}`;
     }
 
-    // Collect streamed response
+    // Collect streamed response with 5-minute timeout
+    const TIMEOUT_MS = 5 * 60 * 1000;
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     let content = "";
+    const startTime = Date.now();
 
     while (true) {
+      if (Date.now() - startTime > TIMEOUT_MS) {
+        reader.cancel();
+        return content || `Error: Genesis bot '${args.botSlug}' timed out after 5 minutes.`;
+      }
+
       const { done, value } = await reader.read();
       if (done) break;
 

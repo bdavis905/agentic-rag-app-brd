@@ -250,11 +250,15 @@ $phase_0_output
 ## Your Workflow
 
 You MUST create all 4 documents by calling the appropriate Genesis bots. For each bot call, curate a detailed prompt (500-2000 words) from the raw context.
+Call Genesis bots ONE AT A TIME.
+Never call the same Genesis bot more than once in a run.
+If a Genesis bot returns any error, do not retry it in this run.
 
 ### Document 1: Build-A-Buyer Profile
 Bot: build-a-buyer-elite-
 Temperature: 0.5
 Include in prompt: audience segments, demographics, pain points, desires, objections, customer language, testimonials, awareness levels. The more specific context you give, the better the output.
+IMPORTANT: In your prompt to this bot, explicitly request ALL analysis types: buyer_profile, 3am_journal, drunken_phone_call, incognito_tab, eulogy_trinity, social_media_doom_scroll, last_straw, conversation_with_god, slow_motion_nightmare, inner_child_critic, ultimate_confession. Ask the bot to generate all of them in a single response.
 
 ### Document 2: Pain Matrix & Core Wound
 Bot: pain-matrix-core-wound-bot-copy
@@ -296,7 +300,8 @@ After calling all bots, respond with a JSON object:
   }
 }
 
-IMPORTANT: Pass RICH, DETAILED context to each bot. Don't just pass a sentence -- give them 500-2000 words of curated context from the raw research. The quality of foundation docs depends entirely on the quality of your bot prompts.`,
+IMPORTANT: Pass RICH, DETAILED context to each bot. Don't just pass a sentence -- give them 500-2000 words of curated context from the raw research. The quality of foundation docs depends entirely on the quality of your bot prompts.
+IMPORTANT: Do not attempt parallel Genesis calls or retries. One call per bot, in sequence, max.`,
       workspaceOutput: "core-foundation.json",
       foundationOutputs: [
         { key: "build_a_buyer", docType: "build-a-buyer" },
@@ -339,6 +344,8 @@ Only call this if the raw context contains writing samples, blog posts, newslett
 Include in prompt: writing samples, brand voice observations, signature phrases, tone notes.
 
 If NO writing samples were found, skip this and set voice_profile to "SKIPPED - No writing samples found. Run again after uploading brand content (blogs, emails, newsletters)."
+
+Never retry a Genesis bot if it returns an error. Call each Genesis bot at most once per run.
 
 ## Output Format
 
