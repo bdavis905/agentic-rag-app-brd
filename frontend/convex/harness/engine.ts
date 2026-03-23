@@ -599,14 +599,26 @@ async function runPhaseLlmSingle(
         for (let i = 0; i < genesisCalls.length; i++) {
           const tc = genesisCalls[i];
           const toolResult = genesisResults[i];
-          // For LLM context, send a summary + first 2000 chars to avoid context overflow.
-          // The full result is stored in hctx.genesisBotResults for direct foundation doc saving.
-          const contextResult = toolResult.length > 2000
-            ? `[Full output: ${toolResult.length} chars -- saved directly to foundation docs]\n\n${toolResult.slice(0, 2000)}\n\n[... truncated for context window -- full output preserved]`
-            : toolResult;
-          messages.push({ role: "tool", tool_call_id: tc.id, content: contextResult });
           const resultSummary = toolResult.length > 200 ? toolResult.slice(0, 200) + "..." : toolResult;
           emit("tool_call_complete", { tool_name: tc.name, result_summary: resultSummary });
+        }
+
+        // If ALL tool calls were Genesis bots, skip the final LLM round.
+        // Foundation docs are saved directly from hctx.genesisBotResults.
+        // This avoids the Convex 10-minute HTTP action timeout.
+        if (otherCalls.length === 0) {
+          // Build a synthetic phase output from cached bot results
+          const botResults: Record<string, any> = {};
+          if (hctx.genesisBotResults) {
+            for (const [slug, result] of Object.entries(hctx.genesisBotResults)) {
+              // Convert slug to key: "build-a-buyer-elite-" -> "build_a_buyer"
+              const key = slug.replace(/-+$/, "").replace(/-/g, "_").replace(/_elite$/, "").replace(/_bot$/, "").replace(/_copy$/, "");
+              botResults[key] = result;
+              botResults[`${key}_source_bot`] = slug;
+            }
+          }
+          emit("text_delta", { content: "\n\n_Genesis bot calls complete. Foundation docs saved._\n" });
+          return botResults;
         }
       }
 
