@@ -308,26 +308,6 @@ export const runToolRound = internalAction({
               };
             }
 
-            // Save each Genesis bot result as a workspace file immediately so it appears in the UI
-            if (toolResult && !toolResult.startsWith("Error:")) {
-              try {
-                const parsedArgs = JSON.parse(tc.arguments || "{}");
-                const botSlug = parsedArgs.bot_slug || "unknown";
-                const botLabel = botSlug.replace(/-+$/g, "").replace(/-/g, " ");
-                const fileIndex = String(round * 10 + i + 1).padStart(2, "0");
-                const filePath = `results/${fileIndex}-${botSlug.replace(/-+$/g, "")}.md`;
-                await ctx.runMutation(internal.workspace.internals.writeFile, {
-                  threadId: run.threadId,
-                  orgId: run.orgId,
-                  filePath,
-                  content: toolResult,
-                  contentType: "text/markdown",
-                  source: "harness",
-                });
-              } catch {
-                // Non-critical — don't fail the phase if workspace write fails
-              }
-            }
           }
 
           // Short-circuit: If ALL tool calls were Genesis AND this phase saves foundation docs,

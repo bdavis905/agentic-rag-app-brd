@@ -19,10 +19,11 @@ const genesisBotTool = {
     description: `Call a Genesis copywriting bot. Key bots for Facebook ad copy production:
 
 COPY BOTS:
-- write-like-luke-bot: Primary copy bot. Writes compelling direct-response Facebook ad copy in Luke's style. Use this for all primary text generation.
-- 75-ads: Generate 75 short ad variations (Opus-powered). Good fallback for volume/variety.
-- ad-hook-bot-1: Generate ad hooks specifically (Opus-powered). Use to supplement if you need more hook variety.
-- headline-bot-v2: Generate punchy headlines under 40 characters.
+- write-like-luke-bot: Primary copy bot. Writes compelling direct-response Facebook ad copy in Luke's style. Use this for ALL primary text generation. Call once per brief.
+- ad-hook-bot-1: Generate ad hooks specifically (Opus-powered). Use ONLY if you need additional hook variety beyond what write-like-luke-bot provides.
+- headline-bot-v2: Generate punchy headlines under 40 characters. Use ONLY if you need additional headline variety.
+
+IMPORTANT: Do NOT call write-like-luke-bot more than once per brief. If the first call returns good copy, use it. Do not retry or call alternative bots.
 
 IMAGE PROMPT BOTS:
 - universal-static-bot: Recommends best image format, call FIRST before specific image bots
@@ -190,7 +191,10 @@ IMPORTANT:
 - Each primary text must be COMPLETE and ready to paste into Facebook Ads Manager. Not outlines or frameworks — finished copy.
 - Headlines MUST be under 40 characters. Count them. If over 40, rewrite shorter.
 - The 5 primary texts must have genuinely DIFFERENT hooks — not word swaps of the same hook.
-- Do NOT produce video scripts, talking head scripts, or VSL scripts. Only Facebook ad primary text copy.`,
+- Do NOT produce video scripts, talking head scripts, or VSL scripts. Only Facebook ad primary text copy.
+- Call write-like-luke-bot ONCE per brief. Do NOT retry or call it again for the same brief. Use whatever the bot returns on the first call.
+- Extract the primaryTexts, headlines, and description from the bot's markdown output. The bot may format them differently — parse and restructure into the JSON schema above.
+- You MUST produce one ad entry per brief. If there are 3 briefs, there must be 3 entries in the ads array.`,
       workspaceOutput: "ad-copy.json",
     },
 
