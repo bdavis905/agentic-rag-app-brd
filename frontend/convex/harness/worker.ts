@@ -308,6 +308,23 @@ export const runToolRound = internalAction({
               };
             }
 
+            // Append bot result to progress file so user can see output in real-time
+            if (toolResult && !toolResult.startsWith("Error:")) {
+              try {
+                const parsedArgs = JSON.parse(tc.arguments || "{}");
+                const botSlug = parsedArgs.bot_slug || "unknown";
+                const botLabel = botSlug.replace(/-+$/g, "").replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+                const separator = `\n\n---\n\n## ${botLabel}\n\n`;
+                await ctx.runMutation(internal.workspace.internals.appendFile, {
+                  threadId: run.threadId,
+                  orgId: run.orgId,
+                  filePath: "progress.md",
+                  content: separator + toolResult,
+                });
+              } catch {
+                // Non-critical
+              }
+            }
           }
 
           // Short-circuit: If ALL tool calls were Genesis AND this phase saves foundation docs,
