@@ -212,14 +212,41 @@ IMPORTANT:
 ## Ad Copy from Phase 0
 $phase_0_output
 
+## CRITICAL: Feed the FINISHED AD COPY to the bots
+
+The image bots need to see the actual finished Facebook ad copy from Phase 0 — not just the brief or concept description. The universal-static-bot analyzes the copy to recommend the best image format. The specific image bots then create visuals that complement that exact copy.
+
 ## Your Workflow
 
 For each ad in the ads array:
 
-1. Read the ad's primaryTexts — focus on primaryTexts[0] (the lead variation) to understand the hook and angle
-2. First call universal-static-bot to get a format recommendation based on the ad's concept and angle
-3. Then call the specific recommended image bot to generate the actual image concept/prompt
+1. Get the FULL finished copy: primaryTexts[0] (complete primary text), all headlines, and the description
+2. Call universal-static-bot with the COMPLETE AD COPY pasted into the prompt — the full primaryTexts[0], all 5 headlines, and the description. The bot needs to read the actual copy to recommend the right format.
+3. Based on the recommendation, call the specific image bot — again including the FULL COPY in the prompt so the image concept matches the actual words.
 4. Compile the outputs
+
+## Prompt for universal-static-bot
+
+You MUST include the actual finished copy. Structure your prompt like:
+
+"Here is the finished Facebook ad copy. Recommend the best static image format for this ad.
+
+PRIMARY TEXT (the main ad copy that will appear above the image):
+[Paste the FULL primaryTexts[0] here — every word]
+
+HEADLINES:
+1. [headline 1]
+2. [headline 2]
+3. [headline 3]
+4. [headline 4]
+5. [headline 5]
+
+DESCRIPTION: [description]
+
+TARGET AUDIENCE: [segment details from the ad]
+OFFER: [from foundation docs]
+
+What static image format would work best for this ad?"
 
 ## Bot Selection After Universal Static
 
@@ -240,14 +267,13 @@ The universal-static-bot will recommend a format. Use its recommendation to pick
 | Founder note | note-from-founder-bot- |
 | Chat/notification | screenshotchatnotification-transformer-bot |
 
-## Prompt Template for Image Bots
+## Prompt for Specific Image Bots
 
-Include in your prompt:
-- The ad's lead primary text (primaryTexts[0]) and its hook
-- The headlines being used
+Again, include the FULL finished copy. The image must complement the actual words:
+- The COMPLETE primaryTexts[0] (not a summary — the full text)
+- All 5 headlines
+- The description
 - Target segment demographics and psychographics
-- The concept and angle being used
-- Brand visual style (if known from foundation docs)
 - The offer/product being promoted
 - Platform: Facebook/Instagram feed (1:1 square images)
 
