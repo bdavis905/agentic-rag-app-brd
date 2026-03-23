@@ -616,6 +616,29 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
+    // Mark any running harness phases and tool calls as stopped
+    setConversation(prev =>
+      prev.map(item => {
+        if (item.type !== 'harness') return item
+        const hasRunning = item.phases.some(p => p.status === 'running')
+        if (!hasRunning) return item
+        return {
+          ...item,
+          phases: item.phases.map(p =>
+            p.status === 'running'
+              ? {
+                  ...p,
+                  status: 'error' as const,
+                  resultMarkdown: '_Stopped by user._',
+                  toolCalls: p.toolCalls.map(tc =>
+                    tc.status === 'running' ? { ...tc, status: 'error' as const, result: 'Stopped' } : tc
+                  ),
+                }
+              : p
+          ),
+        }
+      })
+    )
   }
 
   if (loading) {
