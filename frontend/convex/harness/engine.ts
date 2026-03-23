@@ -23,6 +23,8 @@ interface HarnessContext {
   emit: (type: string, data?: Record<string, any>) => void;
   genesisApiKey?: string;
   genesisProviderKey?: string;
+  genesisBlockedError?: string;
+  genesisBotResults?: Record<string, string>;
 }
 
 /**
@@ -407,11 +409,31 @@ async function executeHarnessTool(
 
   // ── Genesis Bot (runs as Node.js action, reads its own env vars) ──
   if (toolName === "call_genesis_bot") {
-    return await ctx.runAction(internal.harness.genesisAction.callBot, {
-      botSlug: args.bot_slug ?? "",
+    const botSlug = args.bot_slug ?? "";
+    if (hctx.genesisBlockedError) {
+      return hctx.genesisBlockedError;
+    }
+    if (botSlug && hctx.genesisBotResults?.[botSlug]) {
+      return hctx.genesisBotResults[botSlug];
+    }
+    const result = await ctx.runAction(internal.harness.genesisAction.callBot, {
+      botSlug,
       prompt: args.prompt ?? "",
       temperature: args.temperature,
+      orgId: hctx.orgId,
     });
+    if (botSlug) {
+      hctx.genesisBotResults ??= {};
+      hctx.genesisBotResults[botSlug] = result;
+    }
+    if (
+      result.includes("connection_limit_exceeded") ||
+      result.includes("already has an active session")
+    ) {
+      hctx.genesisBlockedError =
+        "Error: Genesis already has an active streaming session for this API key. Skipping additional Genesis bot calls in this run.";
+    }
+    return result;
   }
 
   return `Error: Unknown tool '${toolName}'. Available tools: search_documents, ls, tree, grep, glob, read, call_genesis_bot. Use 'read' with a document_id to read full document content.`;
@@ -519,8 +541,39 @@ async function runPhaseLlmSingle(
         })),
       });
 
-      // Execute each tool call
-      for (const tc of result.toolCalls) {
+      // Execute tool calls -- Genesis bot calls run concurrently, others sequential
+      const genesisCalls = result.toolCalls.filter((tc) => {
+        try {
+          const a = JSON.parse(tc.arguments || "{}");
+          return tc.name === "call_genesis_bot" && a.bot_slug;
+        } catch { return false; }
+      });
+      const otherCalls = result.toolCalls.filter((tc) => !genesisCalls.includes(tc));
+
+      // Run Genesis bot calls concurrently
+      if (genesisCalls.length > 0) {
+        for (const tc of genesisCalls) {
+          emit("tool_call_start", { tool_name: tc.name, arguments: tc.arguments });
+        }
+
+        const genesisResults = await Promise.all(
+          genesisCalls.map(async (tc) => {
+            const parsedArgs = JSON.parse(tc.arguments || "{}");
+            return executeHarnessTool(hctx, tc.name, parsedArgs);
+          }),
+        );
+
+        for (let i = 0; i < genesisCalls.length; i++) {
+          const tc = genesisCalls[i];
+          const toolResult = genesisResults[i];
+          messages.push({ role: "tool", tool_call_id: tc.id, content: toolResult });
+          const resultSummary = toolResult.length > 200 ? toolResult.slice(0, 200) + "..." : toolResult;
+          emit("tool_call_complete", { tool_name: tc.name, result_summary: resultSummary });
+        }
+      }
+
+      // Run other tool calls sequentially
+      for (const tc of otherCalls) {
         let parsedArgs: Record<string, any> = {};
         try {
           parsedArgs = JSON.parse(tc.arguments || "{}");
@@ -528,28 +581,11 @@ async function runPhaseLlmSingle(
           /* empty */
         }
 
-        emit("tool_call_start", {
-          tool_name: tc.name,
-          arguments: tc.arguments,
-        });
-
+        emit("tool_call_start", { tool_name: tc.name, arguments: tc.arguments });
         const toolResult = await executeHarnessTool(hctx, tc.name, parsedArgs);
-
-        // Add tool result to conversation
-        messages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: toolResult,
-        });
-
-        const resultSummary = toolResult.length > 200
-          ? toolResult.slice(0, 200) + "..."
-          : toolResult;
-
-        emit("tool_call_complete", {
-          tool_name: tc.name,
-          result_summary: resultSummary,
-        });
+        messages.push({ role: "tool", tool_call_id: tc.id, content: toolResult });
+        const resultSummary = toolResult.length > 200 ? toolResult.slice(0, 200) + "..." : toolResult;
+        emit("tool_call_complete", { tool_name: tc.name, result_summary: resultSummary });
       }
 
       continue; // Next round
