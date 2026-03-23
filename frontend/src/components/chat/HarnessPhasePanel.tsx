@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Loader2, Check, AlertCircle, Layers, Bot, Search, Clock, XCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2, Check, AlertCircle, Layers, Bot, Search, Clock, XCircle, BookOpen } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { HarnessPhaseState } from '@/types'
@@ -160,8 +160,19 @@ function StatusIcon({ status }: { status: string }) {
   }
 }
 
+/** Human-readable labels for foundation doc types */
+const FOUNDATION_DOC_LABELS: Record<string, string> = {
+  'build-a-buyer': 'Build-A-Buyer Profile',
+  'pain-matrix': 'Pain Matrix & Core Wound',
+  'mechanism': 'Unique Mechanism',
+  'offer-brief': 'Offer Brief',
+  'copy-blocks': 'Copy Blocks',
+  'voice-profile': 'Voice Profile',
+}
+
 function ToolCallCard({ toolCall }: { toolCall: any }) {
   const isGenesis = toolCall.toolName === 'call_genesis_bot' || toolCall.tool_name === 'call_genesis_bot'
+  const isFoundation = toolCall.toolName === 'foundation_doc' || toolCall.tool_name === 'foundation_doc'
   const toolName = toolCall.toolName || toolCall.tool_name || ''
   const args = toolCall.arguments || ''
   const status = toolCall.status || 'running'
@@ -172,7 +183,11 @@ function ToolCallCard({ toolCall }: { toolCall: any }) {
   let query = ''
   try {
     const parsed = JSON.parse(args)
-    if (isGenesis) {
+    if (isFoundation) {
+      label = 'Foundation Doc'
+      const docType = parsed.docType || parsed.doc_type || ''
+      query = FOUNDATION_DOC_LABELS[docType] || docType.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+    } else if (isGenesis) {
       label = 'Genesis Bot'
       const slug = parsed.bot_slug || ''
       query = slug.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).replace(/\s+$/, '')
@@ -189,7 +204,7 @@ function ToolCallCard({ toolCall }: { toolCall: any }) {
     query = args.length > 60 ? args.slice(0, 57) + '...' : args
   }
 
-  const Icon = isGenesis ? Bot : Search
+  const Icon = isFoundation ? BookOpen : isGenesis ? Bot : Search
 
   return (
     <div className="flex items-center gap-2.5 text-sm p-2 rounded-lg bg-background/50 border border-border/30">

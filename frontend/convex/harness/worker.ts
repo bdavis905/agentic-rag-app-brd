@@ -106,7 +106,15 @@ export const runPhase = internalAction({
         if (phase.tools?.length > 0) {
           // Phase with tools -- start tool-calling loop
           // Build initial messages and persist to phase
-          const { messages, llmUrl, apiKey, model } = await buildPhaseContext(ctx, run, phase, phaseIndex);
+          const { messages, foundationDocsLoaded } = await buildPhaseContext(ctx, run, phase, phaseIndex);
+
+          // Log foundation docs as tool call entries so the UI shows them
+          const foundationToolCalls = foundationDocsLoaded.map(({ docType, contentLength }) => ({
+            toolName: "foundation_doc",
+            arguments: JSON.stringify({ docType }),
+            status: "completed",
+            resultSummary: `Loaded ${docType} (${Math.round(contentLength / 1024)}KB)`,
+          }));
 
           await ctx.runMutation(internal.harness.internals.updatePhaseStatus, {
             runId,
@@ -114,6 +122,7 @@ export const runPhase = internalAction({
             status: "running",
             messages,
             currentRound: 0,
+            ...(foundationToolCalls.length > 0 ? { toolCalls: foundationToolCalls } : {}),
           });
 
           // Schedule the first tool round
@@ -124,12 +133,28 @@ export const runPhase = internalAction({
           });
         } else {
           // Phase without tools -- single LLM call
-          const { messages, llmUrl, apiKey, model } = await buildPhaseContext(ctx, run, phase, phaseIndex);
+          const phaseCtx = await buildPhaseContext(ctx, run, phase, phaseIndex);
+
+          // Log foundation docs as tool call entries so the UI shows them
+          if (phaseCtx.foundationDocsLoaded.length > 0) {
+            const foundationToolCalls = phaseCtx.foundationDocsLoaded.map(({ docType, contentLength }) => ({
+              toolName: "foundation_doc",
+              arguments: JSON.stringify({ docType }),
+              status: "completed",
+              resultSummary: `Loaded ${docType} (${Math.round(contentLength / 1024)}KB)`,
+            }));
+            await ctx.runMutation(internal.harness.internals.updatePhaseStatus, {
+              runId,
+              phaseIndex,
+              status: "running",
+              toolCalls: foundationToolCalls,
+            });
+          }
 
           const noopEmit = () => {};
           const result = await streamLlmCall(
-            llmUrl, apiKey,
-            { model, messages, stream: true },
+            phaseCtx.llmUrl, phaseCtx.apiKey,
+            { model: phaseCtx.model, messages: phaseCtx.messages, stream: true },
             noopEmit, false,
           );
 
@@ -372,12 +397,20 @@ export const runToolRound = internalAction({
  * Build the initial messages array for a phase.
  * Reads prior phase outputs from DB, loads workspace/foundation context.
  */
+interface PhaseContext {
+  messages: any[];
+  llmUrl: string;
+  apiKey: string;
+  model: string;
+  foundationDocsLoaded: Array<{ docType: string; contentLength: number }>;
+}
+
 async function buildPhaseContext(
   ctx: any,
   run: any,
   phase: any,
   phaseIndex: number,
-): Promise<{ messages: any[]; llmUrl: string; apiKey: string; model: string }> {
+): Promise<PhaseContext> {
   // Get LLM settings
   const settings: any = await ctx.runQuery(internal.chat.internals.getSettings, { orgId: run.orgId });
   const apiKey = settings?.llmApiKey || "";
@@ -399,6 +432,8 @@ async function buildPhaseContext(
 
   // Load workspace and foundation context
   let workspaceContext = "";
+  const foundationDocsLoaded: Array<{ docType: string; contentLength: number }> = [];
+
   if (phase.workspaceInputs?.length) {
     for (const filePath of phase.workspaceInputs) {
       const content = await ctx.runQuery(internal.workspace.internals.readFile, {
@@ -416,7 +451,10 @@ async function buildPhaseContext(
         offerSlug: fSlug,
         docType,
       });
-      if (doc) workspaceContext += `\n\n### Foundation: ${docType}\n${doc.content}`;
+      if (doc) {
+        workspaceContext += `\n\n### Foundation: ${docType}\n${doc.content}`;
+        foundationDocsLoaded.push({ docType, contentLength: doc.content.length });
+      }
     }
   }
 
@@ -432,6 +470,7 @@ async function buildPhaseContext(
     llmUrl,
     apiKey,
     model,
+    foundationDocsLoaded,
   };
 }
 
@@ -463,6 +502,22 @@ async function completePhaseAndContinue(
       contentType: "application/json",
       source: "harness",
     });
+
+    // Also save a rendered markdown version for easy reading
+    if (phase.workspaceOutput.endsWith(".json") && output && typeof output === "object") {
+      const mdPath = phase.workspaceOutput.replace(/\.json$/, ".md");
+      const mdContent = renderOutputAsMarkdown(phase.name, output);
+      if (mdContent) {
+        await ctx.runMutation(internal.workspace.internals.writeFile, {
+          threadId: run.threadId,
+          orgId: run.orgId,
+          filePath: mdPath,
+          content: mdContent,
+          contentType: "text/markdown",
+          source: "harness",
+        });
+      }
+    }
   }
 
   // Save foundation docs if configured
@@ -530,6 +585,193 @@ async function completePhaseAndContinue(
     runId: run._id,
     phaseIndex: phaseIndex + 1,
   });
+}
+
+/**
+ * Render a phase's JSON output as readable markdown.
+ * Handles known output shapes (ads, briefs, image concepts, etc.)
+ * and falls back to a generic key-value rendering.
+ */
+function renderOutputAsMarkdown(phaseName: string, output: any): string | null {
+  if (!output || typeof output !== "object") return null;
+
+  const lines: string[] = [`# ${phaseName}\n`];
+
+  // ── Ad Copy output (ad-copy.json) ──
+  if (Array.isArray(output.ads)) {
+    for (const ad of output.ads) {
+      lines.push(`## ${ad.brief_id || "Ad"} — ${ad.segment || ""} (${ad.awareness_level || ""})\n`);
+      if (ad.concept) lines.push(`**Concept:** ${ad.concept} | **Angle:** ${ad.angle || ""}\n`);
+      if (ad.genesis_bot_used) lines.push(`**Bot:** ${ad.genesis_bot_used}\n`);
+
+      // Primary texts
+      if (Array.isArray(ad.primaryTexts)) {
+        lines.push(`### Primary Texts (${ad.primaryTexts.length} variations)\n`);
+        ad.primaryTexts.forEach((text: string, i: number) => {
+          lines.push(`#### Variation ${i + 1}\n`);
+          lines.push(text + "\n");
+          lines.push("---\n");
+        });
+      }
+
+      // Headlines
+      if (Array.isArray(ad.headlines)) {
+        lines.push(`### Headlines\n`);
+        ad.headlines.forEach((h: string, i: number) => {
+          const charCount = h.length;
+          const flag = charCount > 40 ? " ⚠️ OVER 40 CHARS" : "";
+          lines.push(`${i + 1}. ${h} _(${charCount} chars${flag})_`);
+        });
+        lines.push("");
+      }
+
+      // Description
+      if (ad.description) {
+        lines.push(`### Description\n`);
+        lines.push(`> ${ad.description}\n`);
+      }
+
+      // Legacy format (hooks/body/full_text)
+      if (Array.isArray(ad.copy?.hooks)) {
+        lines.push(`### Hooks\n`);
+        ad.copy.hooks.forEach((h: string, i: number) => lines.push(`${i + 1}. ${h}`));
+        lines.push("");
+      }
+      if (ad.copy?.body) {
+        lines.push(`### Body Copy\n`);
+        lines.push(ad.copy.body + "\n");
+      }
+      if (ad.copy?.full_text) {
+        lines.push(`### Full Ad Text\n`);
+        lines.push(ad.copy.full_text + "\n");
+      }
+
+      lines.push("\n---\n");
+    }
+
+    if (output.summary) {
+      lines.push(`## Summary\n`);
+      if (output.summary.total_ads_produced) lines.push(`- **Ads produced:** ${output.summary.total_ads_produced}`);
+      if (Array.isArray(output.summary.segments_covered)) lines.push(`- **Segments:** ${output.summary.segments_covered.join(", ")}`);
+      if (output.summary.next_steps) lines.push(`- **Next steps:** ${output.summary.next_steps}`);
+      lines.push("");
+    }
+
+    return lines.join("\n");
+  }
+
+  // ── Image Concepts output (image-concepts.json) ──
+  if (Array.isArray(output.image_concepts)) {
+    for (const img of output.image_concepts) {
+      lines.push(`## ${img.brief_id || "Image"}\n`);
+      if (img.ad_hook) lines.push(`**Hook:** ${img.ad_hook}\n`);
+      if (img.format_recommendation) lines.push(`**Format:** ${img.format_recommendation}`);
+      if (img.image_bot_used) lines.push(`**Bot:** ${img.image_bot_used}\n`);
+
+      if (img.concept) {
+        if (img.concept.description) lines.push(`### Concept\n${img.concept.description}\n`);
+        if (img.concept.text_overlay) lines.push(`**Text overlay:** ${img.concept.text_overlay}`);
+        if (img.concept.style_notes) lines.push(`**Style:** ${img.concept.style_notes}`);
+        if (img.concept.aspect_ratio) lines.push(`**Aspect ratio:** ${img.concept.aspect_ratio}`);
+        lines.push("");
+      }
+
+      if (img.image_prompt) {
+        lines.push(`### Image Generation Prompt\n`);
+        lines.push("```");
+        lines.push(img.image_prompt);
+        lines.push("```\n");
+      }
+
+      lines.push("---\n");
+    }
+
+    if (output.summary) {
+      lines.push(`## Summary\n`);
+      if (output.summary.total_concepts) lines.push(`- **Concepts:** ${output.summary.total_concepts}`);
+      if (Array.isArray(output.summary.formats_used)) lines.push(`- **Formats:** ${output.summary.formats_used.join(", ")}`);
+      if (output.summary.next_steps) lines.push(`- **Next steps:** ${output.summary.next_steps}`);
+      lines.push("");
+    }
+
+    return lines.join("\n");
+  }
+
+  // ── Creative Briefs output (creative-briefs.json) ──
+  if (Array.isArray(output.briefs)) {
+    for (const brief of output.briefs) {
+      lines.push(`## ${brief.id || "Brief"} — ${brief.gap?.segment || brief.segment || ""}\n`);
+      if (brief.awareness_level) lines.push(`**Awareness:** ${brief.awareness_level}`);
+      if (brief.concept_category) lines.push(`**Concept:** ${brief.concept_category} — ${brief.specific_concept || ""}`);
+      if (brief.angle) lines.push(`**Angle:** ${brief.angle}`);
+      if (brief.style) lines.push(`**Style:** ${brief.style}\n`);
+      if (brief.hook_direction) lines.push(`### Hook Direction\n${brief.hook_direction}\n`);
+      if (brief.body_structure) lines.push(`### Body Structure\n${brief.body_structure}\n`);
+      if (brief.visual_direction) lines.push(`### Visual Direction\n${brief.visual_direction}\n`);
+      if (brief.cta_approach) lines.push(`### CTA\n${brief.cta_approach}\n`);
+      lines.push("---\n");
+    }
+    return lines.join("\n");
+  }
+
+  // ── Coverage Analysis output (coverage-analysis.json) ──
+  if (Array.isArray(output.gaps)) {
+    if (Array.isArray(output.segments)) {
+      lines.push(`## Segments\n`);
+      for (const seg of output.segments) {
+        lines.push(`### ${seg.letter || ""}: ${seg.name || ""}`);
+        if (seg.demographics) lines.push(`- **Demographics:** ${seg.demographics}`);
+        if (seg.core_pain) lines.push(`- **Core pain:** ${seg.core_pain}`);
+        if (seg.core_desire) lines.push(`- **Core desire:** ${seg.core_desire}`);
+        if (seg.estimated_size) lines.push(`- **Size:** ${seg.estimated_size}`);
+        lines.push("");
+      }
+    }
+
+    if (output.grid) {
+      lines.push(`## Grid Coverage\n`);
+      lines.push(`- **Total cells:** ${output.grid.total_cells}`);
+      lines.push(`- **Covered:** ${output.grid.covered_cells}`);
+      lines.push(`- **Coverage:** ${output.grid.coverage_percentage}%\n`);
+    }
+
+    lines.push(`## Priority Gaps\n`);
+    for (const gap of output.gaps) {
+      lines.push(`### #${gap.rank}: ${gap.segment} × ${gap.awareness_level}`);
+      lines.push(`- **Concept:** ${gap.recommended_concept}`);
+      lines.push(`- **Angle:** ${gap.recommended_angle}`);
+      lines.push(`- **Style:** ${gap.recommended_style}`);
+      lines.push(`- **Priority:** ${gap.priority_score}`);
+      if (gap.rationale) lines.push(`- **Rationale:** ${gap.rationale}`);
+      lines.push("");
+    }
+    return lines.join("\n");
+  }
+
+  // ── Generic fallback: render top-level keys ──
+  let hasContent = false;
+  for (const [key, value] of Object.entries(output)) {
+    if (key.startsWith("_") || key.endsWith("_source_bot")) continue;
+    if (typeof value === "string" && value.length > 100) {
+      lines.push(`## ${key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}\n`);
+      lines.push(value + "\n");
+      hasContent = true;
+    } else if (Array.isArray(value)) {
+      lines.push(`## ${key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())} (${value.length} items)\n`);
+      for (const item of value.slice(0, 20)) {
+        if (typeof item === "string") {
+          lines.push(`- ${item}`);
+        } else if (typeof item === "object" && item !== null) {
+          const label = item.name || item.id || item.brief_id || JSON.stringify(item).slice(0, 80);
+          lines.push(`- ${label}`);
+        }
+      }
+      lines.push("");
+      hasContent = true;
+    }
+  }
+
+  return hasContent ? lines.join("\n") : null;
 }
 
 /**
