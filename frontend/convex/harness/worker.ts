@@ -550,9 +550,23 @@ async function completePhaseAndContinue(
     });
 
     // Also save a rendered markdown version for easy reading
-    if (phase.workspaceOutput.endsWith(".json") && output && typeof output === "object") {
+    if (phase.workspaceOutput.endsWith(".json")) {
       const mdPath = phase.workspaceOutput.replace(/\.json$/, ".md");
-      const mdContent = renderOutputAsMarkdown(phase.name, output);
+      let mdContent: string | null = null;
+
+      if (output && typeof output === "object") {
+        mdContent = renderOutputAsMarkdown(phase.name, output);
+      }
+      // Fallback: if output is a string (e.g., raw bot response), render it directly
+      if (!mdContent && typeof output === "string" && output.length > 50) {
+        mdContent = `# ${phase.name}\n\n${output}`;
+      }
+      // Last resort: pretty-print the JSON with a header
+      if (!mdContent && output) {
+        const jsonStr = typeof output === "string" ? output : JSON.stringify(output, null, 2);
+        mdContent = `# ${phase.name}\n\n\`\`\`json\n${jsonStr}\n\`\`\``;
+      }
+
       if (mdContent) {
         await ctx.runMutation(internal.workspace.internals.writeFile, {
           threadId: run.threadId,
@@ -794,30 +808,53 @@ function renderOutputAsMarkdown(phaseName: string, output: any): string | null {
     return lines.join("\n");
   }
 
-  // ── Generic fallback: render top-level keys ──
-  let hasContent = false;
+  // ── Generic fallback: render all top-level keys ──
   for (const [key, value] of Object.entries(output)) {
     if (key.startsWith("_") || key.endsWith("_source_bot")) continue;
-    if (typeof value === "string" && value.length > 100) {
-      lines.push(`## ${key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}\n`);
+    const heading = key.replace(/_/g, " ").replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+    if (typeof value === "string") {
+      lines.push(`## ${heading}\n`);
       lines.push(value + "\n");
-      hasContent = true;
     } else if (Array.isArray(value)) {
-      lines.push(`## ${key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())} (${value.length} items)\n`);
-      for (const item of value.slice(0, 20)) {
+      lines.push(`## ${heading} (${value.length} items)\n`);
+      for (const item of value.slice(0, 50)) {
         if (typeof item === "string") {
           lines.push(`- ${item}`);
         } else if (typeof item === "object" && item !== null) {
-          const label = item.name || item.id || item.brief_id || JSON.stringify(item).slice(0, 80);
-          lines.push(`- ${label}`);
+          // Render object items with their key fields
+          const label = item.name || item.id || item.brief_id || item.title || "";
+          if (label) lines.push(`### ${label}\n`);
+          for (const [k, v] of Object.entries(item)) {
+            if (k.startsWith("_") || k === "genesis_raw_output") continue;
+            if (typeof v === "string" && v.length > 200) {
+              lines.push(`**${k}:**\n${v}\n`);
+            } else if (Array.isArray(v)) {
+              lines.push(`**${k}:**`);
+              for (const vi of v) lines.push(`- ${typeof vi === "string" ? vi : JSON.stringify(vi)}`);
+              lines.push("");
+            } else if (v !== null && v !== undefined) {
+              lines.push(`**${k}:** ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
+            }
+          }
+          lines.push("");
         }
       }
       lines.push("");
-      hasContent = true;
+    } else if (typeof value === "object" && value !== null) {
+      lines.push(`## ${heading}\n`);
+      for (const [k, v] of Object.entries(value)) {
+        if (v !== null && v !== undefined) {
+          lines.push(`- **${k}:** ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
+        }
+      }
+      lines.push("");
+    } else if (value !== null && value !== undefined) {
+      lines.push(`**${heading}:** ${String(value)}\n`);
     }
   }
 
-  return hasContent ? lines.join("\n") : null;
+  return lines.length > 1 ? lines.join("\n") : null;
 }
 
 /**
