@@ -287,13 +287,14 @@ export const runToolRound = internalAction({
           // If ALL tool calls were Genesis, complete phase with bot results
           if (otherCalls.length === 0 && genesisCalls.length > 0) {
             // Save foundation docs directly from Genesis results
-            if (run.offerSlug && run.orgId && hctx.genesisBotResults) {
+            const offerSlug = run.offerSlug || "default";
+            if (run.orgId && hctx.genesisBotResults) {
               for (const [slug, result] of Object.entries(hctx.genesisBotResults)) {
                 const docType = BOT_SLUG_TO_DOC_TYPE[slug];
                 if (!docType || !result || (result as string).startsWith("Error:")) continue;
                 await ctx.runMutation(internal.foundationDocs.internals.upsert, {
                   orgId: run.orgId,
-                  offerSlug: run.offerSlug,
+                  offerSlug,
                   docType,
                   content: result as string,
                   sourceBot: slug,
@@ -407,11 +408,12 @@ async function buildPhaseContext(
       if (content) workspaceContext += `\n\n### ${filePath}\n${content}`;
     }
   }
-  if (phase.foundationInputs?.length && run.orgId && run.offerSlug) {
+  if (phase.foundationInputs?.length && run.orgId) {
+    const fSlug = run.offerSlug || "default";
     for (const docType of phase.foundationInputs) {
       const doc = await ctx.runQuery(internal.foundationDocs.internals.getByOrgOfferDoc, {
         orgId: run.orgId,
-        offerSlug: run.offerSlug,
+        offerSlug: fSlug,
         docType,
       });
       if (doc) workspaceContext += `\n\n### Foundation: ${docType}\n${doc.content}`;
@@ -464,7 +466,8 @@ async function completePhaseAndContinue(
   }
 
   // Save foundation docs if configured
-  if (phase.foundationOutputs?.length && run.orgId && run.offerSlug) {
+  const offerSlug = run.offerSlug || "default";
+  if (phase.foundationOutputs?.length && run.orgId) {
     // From structured output
     if (output && typeof output === "object") {
       for (const { key, docType } of phase.foundationOutputs) {
@@ -473,7 +476,7 @@ async function completePhaseAndContinue(
           const content = typeof value === "string" ? value : JSON.stringify(value, null, 2);
           await ctx.runMutation(internal.foundationDocs.internals.upsert, {
             orgId: run.orgId,
-            offerSlug: run.offerSlug,
+            offerSlug,
             docType,
             content,
             sourceBot: output[`${key}_source_bot`] ?? undefined,
@@ -496,7 +499,7 @@ async function completePhaseAndContinue(
         if (!alreadySaved) {
           await ctx.runMutation(internal.foundationDocs.internals.upsert, {
             orgId: run.orgId,
-            offerSlug: run.offerSlug,
+            offerSlug,
             docType,
             content: result as string,
             sourceBot: slug,
