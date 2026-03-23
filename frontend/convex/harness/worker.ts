@@ -455,11 +455,19 @@ async function buildPhaseContext(
   if (phase.foundationInputs?.length && run.orgId) {
     const fSlug = run.offerSlug || "default";
     for (const docType of phase.foundationInputs) {
-      const doc = await ctx.runQuery(internal.foundationDocs.internals.getByOrgOfferDoc, {
+      // Try exact offerSlug match first
+      let doc = await ctx.runQuery(internal.foundationDocs.internals.getByOrgOfferDoc, {
         orgId: run.orgId,
         offerSlug: fSlug,
         docType,
       });
+      // Fallback: if no match and slug was "default", search all org docs for this type
+      if (!doc && fSlug === "default") {
+        const allOrgDocs: any[] = await ctx.runQuery(internal.foundationDocs.internals.listByOrg, {
+          orgId: run.orgId,
+        });
+        doc = allOrgDocs.find((d: any) => d.docType === docType) ?? null;
+      }
       if (doc) {
         workspaceContext += `\n\n### Foundation: ${docType}\n${doc.content}`;
         foundationDocsLoaded.push({ docType, contentLength: doc.content.length });
