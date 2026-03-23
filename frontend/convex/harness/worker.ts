@@ -51,11 +51,12 @@ export const runPhase = internalAction({
       });
       // Update all todos to completed
       const allPhases: any[] = await ctx.runQuery(internal.harness.internals.getPhases, { runId });
-      const todos = allPhases.map((p: any) => ({
-        content: p.phaseName,
-        status: "completed" as const,
-        position: p.phaseIndex,
-      }));
+      const todos = allPhases
+        .sort((a: any, b: any) => a.phaseIndex - b.phaseIndex)
+        .map((p: any) => ({
+          content: p.phaseName,
+          status: "completed" as const,
+        }));
       await ctx.runMutation(internal.todos.internals.writeTodos, {
         threadId: run.threadId,
         orgId: run.orgId,
@@ -81,11 +82,12 @@ export const runPhase = internalAction({
 
     // Update todo status
     const allPhases: any[] = await ctx.runQuery(internal.harness.internals.getPhases, { runId });
-    const todos = allPhases.map((p: any) => ({
-      content: p.phaseName,
-      status: p.phaseIndex === phaseIndex ? "in_progress" : p.status === "completed" ? "completed" : "pending",
-      position: p.phaseIndex,
-    }));
+    const todos = allPhases
+      .sort((a: any, b: any) => a.phaseIndex - b.phaseIndex)
+      .map((p: any) => ({
+        content: p.phaseName,
+        status: (p.phaseIndex === phaseIndex ? "in_progress" : p.status === "completed" ? "completed" : "pending") as "pending" | "in_progress" | "completed",
+      }));
     await ctx.runMutation(internal.todos.internals.writeTodos, {
       threadId: run.threadId,
       orgId: run.orgId,
