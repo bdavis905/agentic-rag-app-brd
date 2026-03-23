@@ -75,14 +75,26 @@ async function startHarnessHandler(ctx: any, args: any) {
   }
 
   if (args.input) {
-    await ctx.runMutation(internal.workspace.internals.writeFile, {
-      threadId: args.threadId,
-      orgId: args.orgId,
-      filePath: "input.txt",
-      content: args.input,
-      contentType: "text/plain",
-      source: "user",
-    });
+    // Write input file directly (mutations can't call ctx.runMutation)
+    const existing = await ctx.db
+      .query("workspaceFiles")
+      .withIndex("by_thread_path", (q: any) =>
+        q.eq("threadId", args.threadId).eq("filePath", "input.txt"))
+      .first();
+    const sizeBytes = new TextEncoder().encode(args.input).length;
+    if (existing) {
+      await ctx.db.patch(existing._id, { content: args.input, sizeBytes, source: "user" });
+    } else {
+      await ctx.db.insert("workspaceFiles", {
+        threadId: args.threadId,
+        orgId: args.orgId,
+        filePath: "input.txt",
+        content: args.input,
+        contentType: "text/plain",
+        source: "user",
+        sizeBytes,
+      });
+    }
   }
 
   await ctx.scheduler.runAfter(0, internal.harness.worker.runPhase, {
