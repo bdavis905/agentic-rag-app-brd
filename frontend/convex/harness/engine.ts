@@ -405,17 +405,12 @@ async function executeHarnessTool(
     });
   }
 
-  // ── Genesis Bot ──
+  // ── Genesis Bot (runs as Node.js action, reads its own env vars) ──
   if (toolName === "call_genesis_bot") {
-    if (!hctx.genesisApiKey || !hctx.genesisProviderKey) {
-      return "Error: Genesis API keys not configured. Set GENESIS_API_KEY and GENESIS_ANTHROPIC_API_KEY in Convex env vars.";
-    }
     return await ctx.runAction(internal.harness.genesisAction.callBot, {
       botSlug: args.bot_slug ?? "",
       prompt: args.prompt ?? "",
       temperature: args.temperature,
-      apiKey: hctx.genesisApiKey,
-      providerKey: hctx.genesisProviderKey,
     });
   }
 

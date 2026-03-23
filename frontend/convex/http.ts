@@ -1759,8 +1759,8 @@ async function runChatLoop(params: {
     await executeHarness(
       {
         ctx, threadId, orgId, offerSlug, userId, apiKey, baseUrl: llmBaseUrl, model: llmModel, emit,
-        genesisApiKey: settings?.genesisApiKey || process.env.GENESIS_API_KEY,
-        genesisProviderKey: settings?.genesisProviderKey || process.env.GENESIS_ANTHROPIC_API_KEY,
+        genesisApiKey: undefined,
+        genesisProviderKey: undefined,
       },
       definition,
       ["input.txt"],
