@@ -250,7 +250,7 @@ $phase_0_output
 ## Your Workflow
 
 You MUST create all 4 documents by calling the appropriate Genesis bots. For each bot call, curate a detailed prompt (500-2000 words) from the raw context.
-Call Genesis bots ONE AT A TIME.
+Call all 3 Genesis bots simultaneously in a single round of tool calls -- they are independent and will run concurrently.
 Never call the same Genesis bot more than once in a run.
 If a Genesis bot returns any error, do not retry it in this run.
 
@@ -301,7 +301,7 @@ After calling all bots, respond with a JSON object:
 }
 
 IMPORTANT: Pass RICH, DETAILED context to each bot. Don't just pass a sentence -- give them 500-2000 words of curated context from the raw research. The quality of foundation docs depends entirely on the quality of your bot prompts.
-IMPORTANT: Do not attempt parallel Genesis calls or retries. One call per bot, in sequence, max.`,
+IMPORTANT: Call all 3 Genesis bots in one round of tool calls so they run concurrently. Do not call them one at a time.`,
       workspaceOutput: "core-foundation.json",
       foundationOutputs: [
         { key: "build_a_buyer", docType: "build-a-buyer" },
@@ -346,6 +346,7 @@ Include in prompt: writing samples, brand voice observations, signature phrases,
 If NO writing samples were found, skip this and set voice_profile to "SKIPPED - No writing samples found. Run again after uploading brand content (blogs, emails, newsletters)."
 
 Never retry a Genesis bot if it returns an error. Call each Genesis bot at most once per run.
+Call both Genesis bots simultaneously in one round of tool calls so they run concurrently.
 
 ## Output Format
 
