@@ -59,8 +59,8 @@ export const callBot = internalAction({
       return `Error calling Genesis bot '${args.botSlug}': ${response.status} ${errorText}`;
     }
 
-    // Collect streamed response with 5-minute timeout
-    const TIMEOUT_MS = 5 * 60 * 1000;
+    // Collect streamed response with 15-minute timeout
+    const TIMEOUT_MS = 15 * 60 * 1000;
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
