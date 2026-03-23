@@ -309,8 +309,11 @@ export const runToolRound = internalAction({
             }
           }
 
-          // If ALL tool calls were Genesis, complete phase with bot results
-          if (otherCalls.length === 0 && genesisCalls.length > 0) {
+          // Short-circuit: If ALL tool calls were Genesis AND this phase saves foundation docs,
+          // complete immediately (bot output IS the final output for foundation builder phases).
+          // Otherwise, feed results back to the LLM so it can make follow-up calls.
+          const hasFoundationOutputs = phase.foundationOutputs?.length > 0;
+          if (otherCalls.length === 0 && genesisCalls.length > 0 && hasFoundationOutputs) {
             // Save foundation docs directly from Genesis results
             const offerSlug = run.offerSlug || "default";
             if (run.orgId && hctx.genesisBotResults) {
