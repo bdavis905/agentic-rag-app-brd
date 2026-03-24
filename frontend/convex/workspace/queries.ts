@@ -77,6 +77,12 @@ export const getFile = query({
 
     if (!file) return null;
 
+    // For image files with storageId, generate a URL instead of returning content
+    let imageUrl: string | null = null;
+    if (file.storageId && file.contentType?.startsWith("image/")) {
+      imageUrl = await ctx.storage.getUrl(file.storageId);
+    }
+
     return {
       id: file._id,
       filePath: file.filePath,
@@ -85,6 +91,21 @@ export const getFile = query({
       source: file.source,
       sizeBytes: file.sizeBytes,
       storageId: file.storageId ?? null,
+      imageUrl,
     };
+  },
+});
+
+/**
+ * Get a storage URL for a file (images, binary files).
+ */
+export const getFileUrl = query({
+  args: {
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    return await ctx.storage.getUrl(args.storageId);
   },
 });

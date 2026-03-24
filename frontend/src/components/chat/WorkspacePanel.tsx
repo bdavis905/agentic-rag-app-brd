@@ -1,4 +1,4 @@
-import { FileText, FileCode, File, FolderOpen } from 'lucide-react'
+import { FileText, FileCode, File, FolderOpen, ImageIcon } from 'lucide-react'
 import type { WorkspaceFile } from '@/types'
 
 interface WorkspacePanelProps {
@@ -8,9 +8,11 @@ interface WorkspacePanelProps {
 
 const codeExtensions = new Set(['py', 'js', 'ts', 'tsx', 'jsx', 'css', 'html', 'json', 'yaml', 'yml', 'xml', 'sql', 'sh', 'bash'])
 const textExtensions = new Set(['md', 'txt', 'csv', 'log'])
+const imageExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'])
 
 function getFileIcon(filePath: string) {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
+  if (imageExtensions.has(ext)) return ImageIcon
   if (codeExtensions.has(ext)) return FileCode
   if (textExtensions.has(ext)) return FileText
   return File

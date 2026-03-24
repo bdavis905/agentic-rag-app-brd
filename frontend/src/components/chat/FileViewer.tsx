@@ -14,6 +14,12 @@ interface FileViewerProps {
   onClose: () => void
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 /** Human-readable labels for foundation doc types */
 const DOC_TYPE_LABELS: Record<string, string> = {
   build_a_buyer: 'Build-A-Buyer Profile',
@@ -59,6 +65,8 @@ export function FileViewer({ file, threadId, orgId, onClose }: FileViewerProps) 
   }, [onClose])
 
   const content = fileData?.content ?? ''
+  const imageUrl = (fileData as any)?.imageUrl ?? null
+  const isImage = file.contentType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.filePath)
   const isMarkdown = file.contentType === 'text/markdown' || file.filePath.endsWith('.md')
   const isHtml = file.contentType === 'text/html' || file.filePath.endsWith('.html')
   const isJson = file.contentType === 'application/json' || file.filePath.endsWith('.json')
@@ -227,6 +235,19 @@ export function FileViewer({ file, threadId, orgId, onClose }: FileViewerProps) 
           {!fileData ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               Loading...
+            </div>
+          ) : isImage && imageUrl ? (
+            <div className="flex flex-col items-center gap-4">
+              <img
+                src={imageUrl}
+                alt={file.filePath}
+                className="max-w-full max-h-[70vh] rounded-lg shadow-lg object-contain"
+              />
+              <p className="text-xs text-muted-foreground">{file.filePath} ({formatFileSize(file.sizeBytes)})</p>
+            </div>
+          ) : isImage && !imageUrl ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              Image loading...
             </div>
           ) : hasPreviewMode && viewMode === 'preview' ? (
             isMarkdown ? (

@@ -89,6 +89,60 @@ export const writeFile = internalMutation({
   },
 });
 
+// ─── Write Image File (storageId-based, no inline content) ──────
+
+export const writeImageFile = internalMutation({
+  args: {
+    threadId: v.id("threads"),
+    orgId: v.optional(v.string()),
+    filePath: v.string(),
+    storageId: v.id("_storage"),
+    contentType: v.optional(v.string()),
+    source: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const pathError = validatePath(args.filePath);
+    if (pathError) throw new Error(pathError);
+
+    const contentType = args.contentType || inferContentType(args.filePath);
+    const source = args.source || "harness";
+
+    // Get file size from storage metadata
+    const metadata = await ctx.storage.getMetadata(args.storageId);
+    const sizeBytes = metadata?.size ?? 0;
+
+    // Check for existing file (upsert)
+    const existing = await ctx.db
+      .query("workspaceFiles")
+      .withIndex("by_thread_path", (q: any) =>
+        q.eq("threadId", args.threadId).eq("filePath", args.filePath)
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        storageId: args.storageId,
+        contentType,
+        sizeBytes,
+        source,
+        content: undefined, // Clear inline content if it existed
+      });
+      return { id: existing._id, filePath: args.filePath, sizeBytes, contentType };
+    }
+
+    const id = await ctx.db.insert("workspaceFiles", {
+      threadId: args.threadId,
+      orgId: args.orgId,
+      filePath: args.filePath,
+      storageId: args.storageId,
+      contentType,
+      source,
+      sizeBytes,
+    });
+    return { id, filePath: args.filePath, sizeBytes, contentType };
+  },
+});
+
 // ─── Read File ──────────────────────────────────────────────────
 
 export const readFile = internalQuery({

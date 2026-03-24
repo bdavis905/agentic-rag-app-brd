@@ -469,7 +469,40 @@ export async function executeHarnessTool(
     return result;
   }
 
-  return `Error: Unknown tool '${toolName}'. Available tools: search_documents, ls, tree, grep, glob, read, call_genesis_bot. Use 'read' with a document_id to read full document content.`;
+  // ── Image Generation (runs as Node.js action, calls Kie.ai API) ──
+  if (toolName === "generate_image") {
+    const prompt = args.prompt ?? "";
+    if (!prompt) return "Error: prompt is required for generate_image";
+
+    const result = await ctx.runAction(internal.harness.imageGenAction.generateImage, {
+      prompt,
+      aspectRatio: args.aspect_ratio ?? "1:1",
+      resolution: args.resolution ?? "1K",
+      model: args.model,
+      orgId: hctx.orgId,
+    });
+
+    // Save the image as a workspace file
+    const briefId = args.brief_id ?? "image";
+    const filePath = `images/${briefId}.png`;
+    await ctx.runMutation(internal.workspace.internals.writeImageFile, {
+      threadId: hctx.threadId,
+      orgId: hctx.orgId,
+      filePath,
+      storageId: result.storageId as any,
+      contentType: "image/png",
+      source: "harness",
+    });
+
+    return JSON.stringify({
+      storageId: result.storageId,
+      filePath,
+      costTime: result.costTime,
+      taskId: result.taskId,
+    });
+  }
+
+  return `Error: Unknown tool '${toolName}'. Available tools: search_documents, ls, tree, grep, glob, read, call_genesis_bot, generate_image.`;
 }
 
 // ─── Phase Runners ──────────────────────────────────────────────

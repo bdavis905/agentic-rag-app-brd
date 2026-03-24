@@ -51,6 +51,24 @@ IMAGE PROMPT BOTS:
   },
 };
 
+const imageGenTool = {
+  type: "function",
+  function: {
+    name: "generate_image",
+    description: "Generate an image using AI (Nano Banana Pro / Gemini 3 Pro Image). Pass the complete image generation prompt. Returns a storageId and filePath for the generated image.",
+    parameters: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "The complete image generation prompt" },
+        brief_id: { type: "string", description: "Brief ID for file naming (e.g., 'legacy-builders-problem-aware')" },
+        aspect_ratio: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9"], description: "Image aspect ratio (default: 1:1)" },
+        resolution: { type: "string", enum: ["1K", "2K"], description: "Image resolution (default: 1K)" },
+      },
+      required: ["prompt", "brief_id"],
+    },
+  },
+};
+
 // ─── Harness Definition ─────────────────────────────────────────
 
 export const adProductionHarness: HarnessDefinition = {
@@ -304,6 +322,60 @@ Respond with a JSON object:
   }
 }`,
       workspaceOutput: "image-concepts.json",
+    },
+
+    // ── Phase 2: Image Generation ───────────────────────────────
+    {
+      name: "Image Generation",
+      description: "Generate actual images from image prompts using AI (Nano Banana Pro)",
+      type: "llm_single",
+      model: "openai/gpt-4o-mini",
+      tools: [imageGenTool],
+      maxRounds: 15,
+      systemPromptTemplate: `You are an image generation executor. Your job is to take the image prompts from the previous phase and generate actual images using the generate_image tool.
+
+## Image Concepts from Phase 1
+$phase_1_output
+
+## Your Workflow
+
+For EACH image concept in the image_concepts array:
+
+1. Extract the image_prompt field — this is the complete prompt ready for the image generator
+2. Call generate_image with:
+   - prompt: the image_prompt from the concept
+   - brief_id: the brief_id from the concept (used for file naming)
+   - aspect_ratio: use the concept's aspect_ratio (default "1:1")
+   - resolution: "1K" for speed (can use "2K" for higher quality)
+3. Record the result (storageId and filePath)
+
+## Important Rules
+
+- Call generate_image ONCE per image concept. Do not retry failed generations.
+- Use the exact image_prompt from the concept — do not modify or rewrite it.
+- Pass the brief_id so images are organized by brief in the workspace.
+- Images will be stored in Convex and appear in the workspace panel automatically.
+
+## Output Format
+
+After generating all images, respond with a JSON object:
+{
+  "generated_images": [
+    {
+      "brief_id": "string",
+      "storageId": "string (from generate_image result)",
+      "filePath": "string (from generate_image result)",
+      "costTime": 0,
+      "prompt_used": "string (first 200 chars of the prompt)"
+    }
+  ],
+  "summary": {
+    "total_generated": 0,
+    "total_failed": 0,
+    "failed_briefs": ["string (brief_ids that failed, if any)"]
+  }
+}`,
+      workspaceOutput: "generated-images.json",
     },
   ],
 };
