@@ -62,11 +62,13 @@ export const runPhase = internalAction({
         orgId: run.orgId,
         todos,
       });
-      // Add completion message to chat
+
+      // Generate a rich summary of everything that was produced
+      const summary = await generateRunSummary(ctx, run, definition, allPhases);
       await ctx.runMutation(internal.chat.internals.addMessage, {
         threadId: run.threadId,
         role: "assistant",
-        content: `Harness workflow "${definition.name}" completed. Check the workspace panel for detailed results.`,
+        content: summary,
       });
       return;
     }
@@ -424,6 +426,147 @@ interface PhaseContext {
   apiKey: string;
   model: string;
   foundationDocsLoaded: Array<{ docType: string; contentLength: number }>;
+}
+
+/**
+ * Generate a rich summary of a completed harness run using the LLM.
+ * Summarizes what was produced, what bots were used, and key outputs.
+ */
+async function generateRunSummary(
+  ctx: any,
+  run: any,
+  definition: any,
+  allPhases: any[],
+): Promise<string> {
+  try {
+    // Collect phase outputs and tool call info
+    const sorted = allPhases.sort((a: any, b: any) => a.phaseIndex - b.phaseIndex);
+    const phaseDetails = sorted.map((p: any) => {
+      const toolCalls = (p.toolCalls ?? []);
+      const genesisCallCount = toolCalls.filter((t: any) => t.toolName === "call_genesis_bot").length;
+      const imageGenCount = toolCalls.filter((t: any) => t.toolName === "generate_image").length;
+      const foundationCount = toolCalls.filter((t: any) => t.toolName === "foundation_doc").length;
+
+      // Summarize output
+      let outputSummary = "";
+      if (p.output && typeof p.output === "object") {
+        if (Array.isArray(p.output.ads)) {
+          const ads = p.output.ads;
+          outputSummary = `${ads.length} ad(s) produced. Briefs: ${ads.map((a: any) => a.brief_id || a.segment || "unknown").join(", ")}. `;
+          for (const ad of ads) {
+            const ptCount = Array.isArray(ad.primaryTexts) ? ad.primaryTexts.length : 0;
+            const hlCount = Array.isArray(ad.headlines) ? ad.headlines.length : 0;
+            outputSummary += `[${ad.brief_id || ad.segment}]: ${ptCount} primary texts, ${hlCount} headlines. `;
+          }
+        }
+        if (Array.isArray(p.output.image_concepts)) {
+          const concepts = p.output.image_concepts;
+          const byBrief: Record<string, number> = {};
+          const botsUsed = new Set<string>();
+          for (const c of concepts) {
+            const bid = c.brief_id || "unknown";
+            byBrief[bid] = (byBrief[bid] || 0) + 1;
+            if (c.format_bot_used) botsUsed.add(c.format_bot_used);
+            if (c.image_bot_used) botsUsed.add(c.image_bot_used);
+          }
+          outputSummary = `${concepts.length} image concept(s). Per brief: ${Object.entries(byBrief).map(([k, v]) => `${k}: ${v}`).join(", ")}. Bots used: ${[...botsUsed].join(", ")}. `;
+        }
+        if (Array.isArray(p.output.generated_images)) {
+          const imgs = p.output.generated_images;
+          const byBrief: Record<string, number> = {};
+          for (const img of imgs) {
+            const bid = (img.brief_id || "unknown").replace(/-\d+$/, "");
+            byBrief[bid] = (byBrief[bid] || 0) + 1;
+          }
+          outputSummary = `${imgs.length} image(s) generated. Per brief: ${Object.entries(byBrief).map(([k, v]) => `${k}: ${v}`).join(", ")}. `;
+          if (p.output.summary?.total_failed > 0) {
+            outputSummary += `${p.output.summary.total_failed} failed. `;
+          }
+        }
+      }
+
+      return {
+        name: p.phaseName,
+        status: p.status,
+        genesisCallCount,
+        imageGenCount,
+        foundationCount,
+        outputSummary: outputSummary || "Completed.",
+      };
+    });
+
+    // Get workspace file list
+    const files = await ctx.runQuery(internal.workspace.internals.listFiles, {
+      threadId: run.threadId,
+    });
+    const fileList = files
+      .filter((f: any) => f.source === "harness")
+      .map((f: any) => `- ${f.filePath} (${formatBytes(f.sizeBytes)})`)
+      .join("\n");
+
+    // Build the summary using the LLM
+    const settings: any = await ctx.runQuery(internal.chat.internals.getSettings, { orgId: run.orgId });
+    const apiKey = settings?.llmApiKey || "";
+    const baseUrl = settings?.llmBaseUrl || "https://api.openai.com/v1";
+    const model = "openai/gpt-4o-mini";
+    const url = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content: `You are a creative production assistant. Write a concise, well-formatted summary of a completed harness workflow. Use markdown formatting. Be specific about numbers and what was produced. Keep it to 200-400 words.`,
+          },
+          {
+            role: "user",
+            content: `Summarize this completed "${definition.name}" workflow:
+
+## Phases Completed
+${phaseDetails.map((p: any) => `### ${p.name} (${p.status})
+- Genesis bot calls: ${p.genesisCallCount}
+- Image generations: ${p.imageGenCount}
+- Foundation docs loaded: ${p.foundationCount}
+- ${p.outputSummary}`).join("\n\n")}
+
+## Workspace Files Created
+${fileList || "None"}
+
+## User Input
+${run.offerSlug ? `Offer: ${run.offerSlug}` : "No offer specified"}
+
+Write a summary that:
+1. States what was produced (number of ads, images, concepts)
+2. Lists which Genesis bots and tools were used
+3. Notes the key workspace files the user should review
+4. Suggests next steps`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      return `**${definition.name}** completed successfully. ${phaseDetails.length} phases ran. Check the workspace panel for results.`;
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content ?? `**${definition.name}** completed. Check workspace for results.`;
+  } catch {
+    // Fallback if summary generation fails
+    return `**${definition.name}** workflow completed successfully. Check the workspace panel for detailed results.`;
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 async function buildPhaseContext(
