@@ -34,7 +34,7 @@ type ConversationItem =
   | { type: 'tools'; id: string; toolCalls: ToolCallInfo[] }
   | { type: 'subagent'; id: string; state: SubAgentState }
   | { type: 'code_execution'; id: string; state: CodeExecutionState }
-  | { type: 'harness'; id: string; phases: HarnessPhaseState[] }
+  | { type: 'harness'; id: string; phases: HarnessPhaseState[]; summary?: string }
 
 // Parsed segment from text with think tags
 type ParsedSegment =
@@ -163,14 +163,16 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
       error: p.error,
     }))
 
+    const summary = (dbHarnessRun as any)?.summary ?? undefined
+
     setConversation(prev => {
       const existing = prev.find(item => item.id === harnessId)
       if (existing && existing.type === 'harness') {
         return prev.map(item =>
-          item.id === harnessId ? { ...item, phases } : item
+          item.id === harnessId ? { ...item, phases, summary } : item
         )
       }
-      return [...prev, { type: 'harness' as const, id: harnessId, phases }]
+      return [...prev, { type: 'harness' as const, id: harnessId, phases, summary }]
     })
   }, [dbHarnessPhases, dbHarnessRun])
 
@@ -731,7 +733,7 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
                   return <CodeExecutionPanel key={item.id} execution={item.state} />
                 }
                 if (item.type === 'harness') {
-                  return <HarnessPhasePanel key={item.id} phases={item.phases} />
+                  return <HarnessPhasePanel key={item.id} phases={item.phases} summary={item.summary} />
                 }
                 return null
               })}

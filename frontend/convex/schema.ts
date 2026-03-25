@@ -216,6 +216,7 @@ export default defineSchema({
     cancelRequested: v.optional(v.boolean()),
     definition: v.optional(v.any()),
     offerSlug: v.optional(v.string()),
+    summary: v.optional(v.string()),
   }).index("by_thread", ["threadId"]),
 
   harnessPhases: defineTable({

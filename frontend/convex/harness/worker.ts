@@ -63,12 +63,11 @@ export const runPhase = internalAction({
         todos,
       });
 
-      // Generate a rich summary of everything that was produced
+      // Generate a rich summary and store it on the run record
       const summary = await generateRunSummary(ctx, run, definition, allPhases);
-      await ctx.runMutation(internal.chat.internals.addMessage, {
-        threadId: run.threadId,
-        role: "assistant",
-        content: summary,
+      await ctx.runMutation(internal.harness.internals.setSummary, {
+        runId,
+        summary,
       });
       return;
     }

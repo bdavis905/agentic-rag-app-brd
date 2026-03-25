@@ -53,6 +53,18 @@ export const completeRun = internalMutation({
   },
 });
 
+export const setSummary = internalMutation({
+  args: {
+    runId: v.id("harnessRuns"),
+    summary: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.runId, {
+      summary: args.summary,
+    } as any);
+  },
+});
+
 export const failRun = internalMutation({
   args: {
     runId: v.id("harnessRuns"),

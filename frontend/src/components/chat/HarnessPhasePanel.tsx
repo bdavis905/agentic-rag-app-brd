@@ -6,14 +6,16 @@ import type { HarnessPhaseState } from '@/types'
 
 interface HarnessPhasePanelProps {
   phases: HarnessPhaseState[]
+  summary?: string
 }
 
-export function HarnessPhasePanel({ phases }: HarnessPhasePanelProps) {
+export function HarnessPhasePanel({ phases, summary }: HarnessPhasePanelProps) {
   if (phases.length === 0) return null
 
   const completedCount = phases.filter(p => p.status === 'completed').length
   const hasError = phases.some(p => p.status === 'error' || p.status === 'cancelled')
   const isRunning = phases.some(p => p.status === 'running')
+  const allDone = completedCount === phases.length && !isRunning
 
   return (
     <div className="border border-blue-500/30 rounded-xl bg-blue-500/5 overflow-hidden animate-fade-in">
@@ -25,7 +27,7 @@ export function HarnessPhasePanel({ phases }: HarnessPhasePanelProps) {
         </span>
         {isRunning && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
         {hasError && !isRunning && <AlertCircle className="h-3.5 w-3.5 text-red-400" />}
-        {completedCount === phases.length && !isRunning && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+        {allDone && <Check className="h-3.5 w-3.5 text-emerald-400" />}
       </div>
 
       <div className="px-2 py-2 space-y-1">
@@ -33,6 +35,15 @@ export function HarnessPhasePanel({ phases }: HarnessPhasePanelProps) {
           <PhaseItem key={phase.phaseIndex} phase={phase} />
         ))}
       </div>
+
+      {/* Summary rendered at the bottom after all phases complete */}
+      {allDone && summary && (
+        <div className="border-t border-blue-500/20 px-4 py-4">
+          <div className="prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
