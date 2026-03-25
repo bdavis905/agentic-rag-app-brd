@@ -5,7 +5,7 @@
  * LLM calls, with each phase building on the output of previous phases.
  */
 
-export type PhaseType = "llm_single" | "llm_batch_agents";
+export type PhaseType = "llm_single" | "llm_batch_agents" | "executor";
 
 export interface PhaseDefinition {
   /** Display name for the phase */
@@ -19,6 +19,7 @@ export interface PhaseDefinition {
    * Available variables: $contract_text, $prior_results, $phase_name,
    * and $workspace_{filename} for loaded workspace files.
    */
+  /** System prompt template (not used for executor phases) */
   systemPromptTemplate: string;
   /** Tool definitions available during this phase (OpenAI format) */
   tools?: any[];

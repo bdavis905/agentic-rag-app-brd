@@ -166,6 +166,13 @@ export const runPhase = internalAction({
         // Batch phase -- run inline since each item is a quick LLM call
         const output = await runBatchPhase(ctx, run, phase, phaseIndex);
         await completePhaseAndContinue(ctx, run, phase, phaseIndex, output);
+      } else if (phase.type === "executor") {
+        // Code-driven phase -- no LLM, just run the executor function directly
+        // Schedule the executor action which handles its own batching/timeouts
+        await ctx.scheduler.runAfter(0, internal.harness.worker.runExecutor, {
+          runId,
+          phaseIndex,
+        });
       }
     } catch (e: any) {
       await ctx.runMutation(internal.harness.internals.failPhase, {
@@ -471,6 +478,186 @@ export const runToolRound = internalAction({
         runId,
         error: `Phase ${phaseIndex}, round ${round} failed: ${e.message}`,
         currentPhase: phaseIndex,
+      });
+    }
+  },
+});
+
+// ─── Executor: Code-Driven Phase (No LLM) ───────────────────────
+
+/**
+ * Execute a code-driven phase. Currently supports:
+ * - "Image Generation": reads image_concepts from prior phase, generates images via Kie.ai
+ *
+ * Runs in batches to stay under Convex action timeout.
+ * Self-chains if there are more items to process.
+ */
+export const runExecutor = internalAction({
+  args: {
+    runId: v.id("harnessRuns"),
+    phaseIndex: v.number(),
+    batchOffset: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { runId, phaseIndex } = args;
+    const batchOffset = args.batchOffset ?? 0;
+    const BATCH_SIZE = 5;
+
+    const run: any = await ctx.runQuery(internal.harness.internals.getRun, { runId });
+    if (!run || run.cancelRequested || run.status === "cancelled") return;
+
+    const definition = run.definition;
+    const phase = definition.phases[phaseIndex];
+
+    // Get prior phase outputs
+    const allPhases: any[] = await ctx.runQuery(internal.harness.internals.getPhases, { runId });
+    const priorPhase = allPhases.find((p: any) => p.phaseIndex === phaseIndex - 1);
+    const priorOutput = priorPhase?.output;
+
+    if (!priorOutput) {
+      await ctx.runMutation(internal.harness.internals.failPhase, {
+        runId, phaseIndex, error: "No output from prior phase",
+      });
+      return;
+    }
+
+    // Get existing tool calls (from prior batches)
+    const currentPhase: any = await ctx.runQuery(internal.harness.internals.getPhase, { runId, phaseIndex });
+    const toolCallLog = [...(currentPhase?.toolCalls ?? [])];
+
+    // ── Image Generation Executor ──
+    // Extract image prompts from prior phase output
+    const concepts = priorOutput.image_concepts ?? [];
+    if (concepts.length === 0) {
+      await completePhaseAndContinue(ctx, run, phase, phaseIndex, {
+        generated_images: [],
+        summary: { total_generated: 0, total_failed: 0 },
+      });
+      return;
+    }
+
+    // Get the batch to process
+    const batch = concepts.slice(batchOffset, batchOffset + BATCH_SIZE);
+    if (batch.length === 0) {
+      // All batches done — complete the phase
+      const generatedImages = toolCallLog
+        .filter((t: any) => t.toolName === "generate_image" && t.status === "completed")
+        .map((t: any) => {
+          try { return JSON.parse(t.resultSummary || "{}"); } catch { return null; }
+        })
+        .filter(Boolean);
+
+      await completePhaseAndContinue(ctx, run, phase, phaseIndex, {
+        generated_images: generatedImages,
+        summary: {
+          total_generated: generatedImages.length,
+          total_failed: toolCallLog.filter((t: any) => t.status === "error").length,
+        },
+      });
+      return;
+    }
+
+    // Log batch as running
+    for (let i = 0; i < batch.length; i++) {
+      const concept = batch[i];
+      toolCallLog.push({
+        toolName: "generate_image",
+        arguments: JSON.stringify({
+          brief_id: concept.brief_id || `image-${batchOffset + i}`,
+          concept_index: concept.concept_index ?? batchOffset + i + 1,
+        }),
+        status: "running",
+      });
+    }
+    await ctx.runMutation(internal.harness.internals.updatePhaseStatus, {
+      runId, phaseIndex, status: "running", toolCalls: toolCallLog,
+    });
+
+    // Generate images concurrently
+    const results = await Promise.all(
+      batch.map(async (concept: any, i: number) => {
+        const prompt = concept.image_prompt || concept.visual_description || "";
+        if (!prompt) return { error: "No image prompt", briefId: concept.brief_id };
+
+        const briefId = concept.brief_id || `image`;
+        const conceptIdx = concept.concept_index ?? batchOffset + i + 1;
+        const uniqueId = `${briefId}-${conceptIdx}`;
+
+        try {
+          const result = await ctx.runAction(internal.harness.imageGenAction.generateImage, {
+            prompt,
+            aspectRatio: concept.aspect_ratio || "1:1",
+            resolution: "1K",
+            orgId: run.orgId,
+          });
+
+          // Save as workspace file
+          const filePath = `images/${uniqueId}.png`;
+          await ctx.runMutation(internal.workspace.internals.writeImageFile, {
+            threadId: run.threadId,
+            orgId: run.orgId,
+            filePath,
+            storageId: result.storageId as any,
+            contentType: "image/png",
+            source: "harness",
+          });
+
+          return {
+            brief_id: uniqueId,
+            storageId: result.storageId,
+            filePath,
+            costTime: result.costTime,
+          };
+        } catch (e: any) {
+          return { error: e.message, briefId: uniqueId };
+        }
+      }),
+    );
+
+    // Update tool call statuses
+    for (let i = 0; i < batch.length; i++) {
+      const result = results[i];
+      const idx = toolCallLog.length - batch.length + i;
+      if (result.error) {
+        toolCallLog[idx] = { ...toolCallLog[idx], status: "error", resultSummary: result.error };
+      } else {
+        toolCallLog[idx] = {
+          ...toolCallLog[idx],
+          status: "completed",
+          resultSummary: JSON.stringify({ storageId: result.storageId, filePath: result.filePath }),
+        };
+      }
+    }
+
+    await ctx.runMutation(internal.harness.internals.updatePhaseStatus, {
+      runId, phaseIndex, status: "running", toolCalls: toolCallLog,
+    });
+
+    // Schedule next batch
+    const nextOffset = batchOffset + BATCH_SIZE;
+    if (nextOffset < concepts.length) {
+      await ctx.scheduler.runAfter(0, internal.harness.worker.runExecutor, {
+        runId, phaseIndex, batchOffset: nextOffset,
+      });
+    } else {
+      // All done — complete phase
+      const generatedImages = results.filter((r: any) => !r.error);
+      const failedCount = results.filter((r: any) => r.error).length;
+      // Include results from prior batches too
+      const priorResults = toolCallLog
+        .slice(0, -batch.length)
+        .filter((t: any) => t.toolName === "generate_image" && t.status === "completed")
+        .map((t: any) => {
+          try { return JSON.parse(t.resultSummary || "{}"); } catch { return null; }
+        })
+        .filter(Boolean);
+
+      await completePhaseAndContinue(ctx, run, phase, phaseIndex, {
+        generated_images: [...priorResults, ...generatedImages],
+        summary: {
+          total_generated: priorResults.length + generatedImages.length,
+          total_failed: failedCount,
+        },
       });
     }
   },

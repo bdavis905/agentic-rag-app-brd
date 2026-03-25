@@ -360,61 +360,12 @@ IMPORTANT:
       workspaceOutput: "image-concepts.json",
     },
 
-    // ── Phase 2: Image Generation ───────────────────────────────
+    // ── Phase 2: Image Generation (Code-Driven, No LLM) ────────
     {
       name: "Image Generation",
-      description: "Generate 5-10 images per brief from image prompts using AI (Nano Banana Pro)",
-      type: "llm_single",
-      model: "openai/gpt-4o-mini",
-      tools: [imageGenTool],
-      maxRounds: 40,
-      systemPromptTemplate: `You are an image generation executor. Your job is to take ALL the image prompts from Phase 1 and generate actual images using the generate_image tool.
-
-## Image Concepts from Phase 1
-$phase_1_output
-
-## Your Workflow
-
-Go through EVERY image concept in the image_concepts array and generate an image for each one:
-
-1. Extract the image_prompt field — this is the complete prompt ready for the image generator
-2. Call generate_image with:
-   - prompt: the image_prompt from the concept
-   - brief_id: use format "{brief_id}-{concept_index}" to create unique filenames (e.g., "legacy-builders-problem-aware-1", "legacy-builders-problem-aware-2")
-   - aspect_ratio: use the concept's aspect_ratio (default "1:1")
-   - resolution: "1K"
-3. Record the result
-
-## Important Rules
-
-- Generate an image for EVERY concept in the array. Do not skip any.
-- Each concept gets a UNIQUE brief_id by appending the concept_index (e.g., "-1", "-2", "-3")
-- Call generate_image calls concurrently when possible (multiple calls in one round)
-- If a generation fails, note it and move on — do not retry.
-- There should be 5-10+ images per brief and 15-30+ images total.
-
-## Output Format
-
-After generating all images, respond with a JSON object:
-{
-  "generated_images": [
-    {
-      "brief_id": "string",
-      "concept_index": 1,
-      "format_bot": "string (which bot created this concept)",
-      "storageId": "string (from generate_image result)",
-      "filePath": "string (from generate_image result)",
-      "costTime": 0,
-      "prompt_used": "string (first 200 chars of the prompt)"
-    }
-  ],
-  "summary": {
-    "total_generated": 0,
-    "total_failed": 0,
-    "images_per_brief": {},
-    "failed_concepts": ["string"]
-  }
-}`,
+      description: "Generate images from prompts using Kie.ai Nano Banana Pro (5 at a time)",
+      type: "executor" as any,
+      systemPromptTemplate: "", // Not used — executor runs code directly
       workspaceOutput: "generated-images.json",
     },
   ],
