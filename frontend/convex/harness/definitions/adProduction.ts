@@ -166,6 +166,12 @@ VOICE: [from voice profile]
 PROVEN ELEMENTS: [from copy blocks]
 COMPLIANCE: [any restrictions]
 
+CRITICAL RULES:
+- Do NOT assume or fabricate specific durations (like '20-minute masterclass'). If you don't know how long something is, say 'free training' or 'free masterclass' without a time.
+- Do NOT invent prices, statistics, or guarantees not in the offer brief.
+- Only use facts explicitly stated in the source materials above.
+- CTAs should match the actual offer — keep them simple and factual.
+
 Also generate 5 headline variations (under 40 characters each) and 1 short description (3-6 words)."
 
 ## Output Format
@@ -212,7 +218,20 @@ IMPORTANT:
 - Do NOT produce video scripts, talking head scripts, or VSL scripts. Only Facebook ad primary text copy.
 - Call write-like-luke-bot ONCE per brief. Do NOT retry or call it again for the same brief. Use whatever the bot returns on the first call.
 - Extract the primaryTexts, headlines, and description from the bot's markdown output. The bot may format them differently — parse and restructure into the JSON schema above.
-- You MUST produce one ad entry per brief. If there are 3 briefs, there must be 3 entries in the ads array.`,
+- You MUST produce one ad entry per brief. If there are 3 briefs, there must be 3 entries in the ads array.
+
+## FACT-CHECK RULES (CRITICAL)
+
+Do NOT fabricate or assume specific facts. Only use claims that are explicitly stated in the foundation docs or offer brief. Specifically:
+
+- **Durations/lengths**: Do NOT assume how long a webinar, masterclass, training, or course is. If the offer brief does not state a specific duration, use vague language like "free training" or "free masterclass" — never "20-minute" or "60-minute" unless the offer brief explicitly says so.
+- **Prices**: Only use prices explicitly stated in the offer brief. Never invent pricing.
+- **Statistics**: Only use numbers and stats that appear in the foundation docs. Do not round, exaggerate, or fabricate statistics.
+- **Guarantees**: Only reference guarantees explicitly described in the offer brief.
+- **Testimonial claims**: Only use results/outcomes that appear in the foundation docs.
+- **CTAs**: The CTA should match what the offer actually is. If the offer is a webinar registration, say "Register Now" or "Watch the Free Training" — do not add durations or details not in the offer brief.
+
+When in doubt, keep it vague rather than specific. "Free training" is always safer than "Free 20-minute training" when you do not know the actual duration.`,
       workspaceOutput: "ad-copy.json",
     },
 
