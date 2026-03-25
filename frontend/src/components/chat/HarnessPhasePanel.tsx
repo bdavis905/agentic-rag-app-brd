@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Loader2, Check, AlertCircle, Layers, Bot, Search, Clock, XCircle, BookOpen } from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2, Check, AlertCircle, Layers, Bot, Search, Clock, XCircle, BookOpen, ImageIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { HarnessPhaseState } from '@/types'
@@ -184,12 +184,13 @@ const FOUNDATION_DOC_LABELS: Record<string, string> = {
 function ToolCallCard({ toolCall }: { toolCall: any }) {
   const isGenesis = toolCall.toolName === 'call_genesis_bot' || toolCall.tool_name === 'call_genesis_bot'
   const isFoundation = toolCall.toolName === 'foundation_doc' || toolCall.tool_name === 'foundation_doc'
+  const isImageGen = toolCall.toolName === 'generate_image' || toolCall.tool_name === 'generate_image'
   const toolName = toolCall.toolName || toolCall.tool_name || ''
   const args = toolCall.arguments || ''
   const status = toolCall.status || 'running'
   const resultSummary = toolCall.resultSummary || toolCall.result_summary || ''
 
-  // Parse bot slug or search query from arguments
+  // Parse arguments into readable label + description
   let label = toolName
   let query = ''
   try {
@@ -198,6 +199,12 @@ function ToolCallCard({ toolCall }: { toolCall: any }) {
       label = 'Foundation Doc'
       const docType = parsed.docType || parsed.doc_type || ''
       query = FOUNDATION_DOC_LABELS[docType] || docType.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+    } else if (isImageGen) {
+      label = 'Image'
+      const briefId = parsed.brief_id || parsed.Brief_id || ''
+      const conceptIdx = parsed.concept_index || parsed.Concept_index || ''
+      query = briefId.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+      if (conceptIdx) query += ` #${conceptIdx}`
     } else if (isGenesis) {
       label = 'Genesis Bot'
       const slug = parsed.bot_slug || ''
@@ -215,7 +222,16 @@ function ToolCallCard({ toolCall }: { toolCall: any }) {
     query = args.length > 60 ? args.slice(0, 57) + '...' : args
   }
 
-  const Icon = isFoundation ? BookOpen : isGenesis ? Bot : Search
+  // Parse result summary for image gen — show file path instead of raw JSON
+  let displayResult = resultSummary
+  if (isImageGen && status === 'completed' && resultSummary) {
+    try {
+      const parsed = JSON.parse(resultSummary)
+      displayResult = parsed.filePath || resultSummary
+    } catch { /* keep original */ }
+  }
+
+  const Icon = isFoundation ? BookOpen : isImageGen ? ImageIcon : isGenesis ? Bot : Search
 
   return (
     <div className="flex items-center gap-2.5 text-sm p-2 rounded-lg bg-background/50 border border-border/30">
@@ -225,10 +241,13 @@ function ToolCallCard({ toolCall }: { toolCall: any }) {
       <div className="min-w-0 flex-1">
         <span className="text-xs font-medium text-foreground/80">{label}</span>
         {query && <p className="text-xs text-muted-foreground truncate capitalize">{query}</p>}
-        {status === 'completed' && resultSummary && (
+        {status === 'completed' && displayResult && !isImageGen && (
           <p className="text-xs text-muted-foreground/70 truncate mt-0.5">
-            {resultSummary.length > 100 ? resultSummary.slice(0, 97) + '...' : resultSummary}
+            {displayResult.length > 100 ? displayResult.slice(0, 97) + '...' : displayResult}
           </p>
+        )}
+        {status === 'completed' && isImageGen && displayResult && (
+          <p className="text-xs text-emerald-400/70 truncate mt-0.5">{displayResult}</p>
         )}
       </div>
       <div className="shrink-0">
