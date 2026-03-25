@@ -219,38 +219,29 @@ IMPORTANT:
     // ── Phase 1: Image Concepts ─────────────────────────────────
     {
       name: "Image Concepts",
-      description: "Generate image concepts and prompts for each ad using Genesis image bots",
+      description: "Generate 5-10 image concepts per brief using Genesis image bots",
       type: "llm_single",
       model: "anthropic/claude-opus-4.6",
       tools: [genesisBotTool],
-      maxRounds: 10,
-      foundationInputs: ["build-a-buyer", "offer-brief", "voice-profile", "copy-blocks"],
-      systemPromptTemplate: `You are an image concept producer for Facebook ads. Your job is to create image concepts and prompts for each ad from the copy production phase.
+      maxRounds: 20,
+      foundationInputs: ["build-a-buyer", "offer-brief", "voice-profile"],
+      systemPromptTemplate: `You are an image concept producer for Facebook ads. Your job is to create MULTIPLE image concepts per ad — at least 5-10 per brief — so we have plenty of options to choose from.
 
 ## Ad Copy from Phase 0
 $phase_0_output
 
-## CRITICAL: Feed the FINISHED AD COPY to the bots
+## Two-Step Process Per Brief
 
-The image bots need to see the actual finished Facebook ad copy from Phase 0 — not just the brief or concept description. The universal-static-bot analyzes the copy to recommend the best image format. The specific image bots then create visuals that complement that exact copy.
+### Step 1: Call universal-static-bot (ROUTER)
 
-## Your Workflow
+For EACH ad in the ads array, call universal-static-bot with the FULL FINISHED AD COPY. This bot analyzes the copy and recommends which format bots to use.
 
-For each ad in the ads array:
+Your prompt to universal-static-bot MUST include:
 
-1. Get the FULL finished copy: primaryTexts[0] (complete primary text), all headlines, and the description
-2. Call universal-static-bot with the COMPLETE AD COPY pasted into the prompt — the full primaryTexts[0], all 5 headlines, and the description. The bot needs to read the actual copy to recommend the right format.
-3. Based on the recommendation, call the specific image bot — again including the FULL COPY in the prompt so the image concept matches the actual words.
-4. Compile the outputs
-
-## Prompt for universal-static-bot
-
-You MUST include the actual finished copy. Structure your prompt like:
-
-"Here is the finished Facebook ad copy. Recommend the best static image format for this ad.
+"Here is the finished Facebook ad copy. Recommend the best static image formats for this ad. Recommend at least 3-5 different format bots.
 
 PRIMARY TEXT (the main ad copy that will appear above the image):
-[Paste the FULL primaryTexts[0] here — every word]
+[Paste the FULL primaryTexts[0] here — every word of it]
 
 HEADLINES:
 1. [headline 1]
@@ -261,17 +252,39 @@ HEADLINES:
 
 DESCRIPTION: [description]
 
-TARGET AUDIENCE: [segment details from the ad]
-OFFER: [from foundation docs]
+TARGET AUDIENCE: [segment name] — [demographics]
+OFFER: [product/offer from foundation docs]
 
-What static image format would work best for this ad?"
+Recommend 3-5 image format bots that would work best for this copy."
 
-## Bot Selection After Universal Static
+The universal-static-bot will recommend specific format bots. It is a ROUTER — its output tells you which bots to call next.
 
-The universal-static-bot will recommend a format. Use its recommendation to pick the right bot:
+### Step 2: Call 2-3 Recommended Format Bots
 
-| Format | Bot |
-|--------|-----|
+For each ad, call 2-3 of the recommended format bots. Each bot produces 5 concepts, so 2-3 bots = 10-15 concepts per brief.
+
+Format bots need EXTRACTED COPY BLOCKS, not the full ad copy. Structure your prompt like:
+
+"Create 5 static ad image concepts for a Facebook ad.
+
+CLIENT: [brand name]
+PRODUCT: [offer name / mechanism]
+TARGET: [segment name — demographics]
+TONE: [from voice profile]
+
+TEXT BLOCK 1 (main hook/headline, 3-8 words): [extracted from the ad's strongest hook]
+TEXT BLOCK 2 (supporting statement): [extracted secondary claim or benefit]
+KEY STAT: [any specific number or data point from the copy]
+CTA: [call to action]
+
+The ad copy above this image says: [first 2 lines of primaryTexts[0] — just the hook]
+
+Create 5 image concepts with TEXT_BLOCK_1, TEXT_BLOCK_2, visual idea, CTA, color cues, and layout notes."
+
+### Bot Slug Reference
+
+| Format | Bot Slug |
+|--------|----------|
 | Bold typography | bold-typography-bot |
 | Hero/product | hero-bot- |
 | Before/after | side-by-sidebefore-and-after-bot- |
@@ -285,15 +298,12 @@ The universal-static-bot will recommend a format. Use its recommendation to pick
 | Founder note | note-from-founder-bot- |
 | Chat/notification | screenshotchatnotification-transformer-bot |
 
-## Prompt for Specific Image Bots
+## Target Numbers
 
-Again, include the FULL finished copy. The image must complement the actual words:
-- The COMPLETE primaryTexts[0] (not a summary — the full text)
-- All 5 headlines
-- The description
-- Target segment demographics and psychographics
-- The offer/product being promoted
-- Platform: Facebook/Instagram feed (1:1 square images)
+- Per brief: 5-10 image concepts minimum
+- Per format bot call: expect 5 concepts back
+- Call 2-3 format bots per brief
+- Total across all briefs: 15-30 image concepts
 
 ## Output Format
 
@@ -302,59 +312,67 @@ Respond with a JSON object:
   "image_concepts": [
     {
       "brief_id": "string (matches ad brief_id)",
-      "ad_hook": "string (the first line of primaryTexts[0] — what this image supports)",
-      "format_recommendation": "string (from universal-static-bot)",
-      "image_bot_used": "string (specific bot slug)",
-      "concept": {
-        "description": "string (what the image shows)",
-        "text_overlay": "string (any text on the image)",
-        "style_notes": "string (visual style, colors, mood)",
-        "aspect_ratio": "1:1"
-      },
-      "image_prompt": "string (the full prompt for image generation)",
-      "genesis_raw_output": "string (full bot response)"
+      "ad_hook": "string (the hook line this image supports)",
+      "format_bot_used": "string (e.g., bold-typography-bot)",
+      "concept_index": 1,
+      "text_block_1": "string (main headline text for the image, 3-8 words)",
+      "text_block_2": "string (supporting text for the image)",
+      "visual_description": "string (detailed visual concept)",
+      "cta": "string",
+      "color_cue": "string (hex colors and palette)",
+      "layout_notes": "string (hierarchy, spacing, typography)",
+      "image_prompt": "string (complete prompt for image generation — combine visual_description + text blocks + colors + layout into one prompt)",
+      "aspect_ratio": "1:1"
     }
   ],
   "summary": {
     "total_concepts": 0,
-    "formats_used": ["string"],
-    "next_steps": "string (image generation with Gemini, review, etc.)"
+    "concepts_per_brief": {},
+    "formats_used": ["string"]
   }
-}`,
+}
+
+IMPORTANT:
+- You MUST produce at least 5 image concepts per brief. Aim for 10.
+- Call universal-static-bot ONCE per brief with the FULL AD COPY.
+- Call 2-3 format bots per brief with EXTRACTED COPY BLOCKS.
+- Each format bot produces 5 concepts — include ALL of them in the output.
+- The image_prompt field should be a complete, self-contained prompt ready for an image generator.`,
       workspaceOutput: "image-concepts.json",
     },
 
     // ── Phase 2: Image Generation ───────────────────────────────
     {
       name: "Image Generation",
-      description: "Generate actual images from image prompts using AI (Nano Banana Pro)",
+      description: "Generate 5-10 images per brief from image prompts using AI (Nano Banana Pro)",
       type: "llm_single",
       model: "openai/gpt-4o-mini",
       tools: [imageGenTool],
-      maxRounds: 15,
-      systemPromptTemplate: `You are an image generation executor. Your job is to take the image prompts from the previous phase and generate actual images using the generate_image tool.
+      maxRounds: 40,
+      systemPromptTemplate: `You are an image generation executor. Your job is to take ALL the image prompts from Phase 1 and generate actual images using the generate_image tool.
 
 ## Image Concepts from Phase 1
 $phase_1_output
 
 ## Your Workflow
 
-For EACH image concept in the image_concepts array:
+Go through EVERY image concept in the image_concepts array and generate an image for each one:
 
 1. Extract the image_prompt field — this is the complete prompt ready for the image generator
 2. Call generate_image with:
    - prompt: the image_prompt from the concept
-   - brief_id: the brief_id from the concept (used for file naming)
+   - brief_id: use format "{brief_id}-{concept_index}" to create unique filenames (e.g., "legacy-builders-problem-aware-1", "legacy-builders-problem-aware-2")
    - aspect_ratio: use the concept's aspect_ratio (default "1:1")
-   - resolution: "1K" for speed (can use "2K" for higher quality)
-3. Record the result (storageId and filePath)
+   - resolution: "1K"
+3. Record the result
 
 ## Important Rules
 
-- Call generate_image ONCE per image concept. Do not retry failed generations.
-- Use the exact image_prompt from the concept — do not modify or rewrite it.
-- Pass the brief_id so images are organized by brief in the workspace.
-- Images will be stored in Convex and appear in the workspace panel automatically.
+- Generate an image for EVERY concept in the array. Do not skip any.
+- Each concept gets a UNIQUE brief_id by appending the concept_index (e.g., "-1", "-2", "-3")
+- Call generate_image calls concurrently when possible (multiple calls in one round)
+- If a generation fails, note it and move on — do not retry.
+- There should be 5-10+ images per brief and 15-30+ images total.
 
 ## Output Format
 
@@ -363,6 +381,8 @@ After generating all images, respond with a JSON object:
   "generated_images": [
     {
       "brief_id": "string",
+      "concept_index": 1,
+      "format_bot": "string (which bot created this concept)",
       "storageId": "string (from generate_image result)",
       "filePath": "string (from generate_image result)",
       "costTime": 0,
@@ -372,7 +392,8 @@ After generating all images, respond with a JSON object:
   "summary": {
     "total_generated": 0,
     "total_failed": 0,
-    "failed_briefs": ["string (brief_ids that failed, if any)"]
+    "images_per_brief": {},
+    "failed_concepts": ["string"]
   }
 }`,
       workspaceOutput: "generated-images.json",
