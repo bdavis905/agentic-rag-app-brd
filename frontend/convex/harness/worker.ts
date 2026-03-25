@@ -254,14 +254,15 @@ export const runToolRound = internalAction({
         };
         const updatedMessages = [...messages, assistantMsg];
 
-        // Separate Genesis calls from others
+        // Separate concurrent calls (Genesis + image gen) from sequential others
         const genesisCalls = result.toolCalls.filter((tc) => {
           try {
             const a = JSON.parse(tc.arguments || "{}");
             return tc.name === "call_genesis_bot" && a.bot_slug;
           } catch { return false; }
         });
-        const otherCalls = result.toolCalls.filter((tc) => !genesisCalls.includes(tc));
+        const imageGenCalls = result.toolCalls.filter((tc) => tc.name === "generate_image");
+        const otherCalls = result.toolCalls.filter((tc) => !genesisCalls.includes(tc) && !imageGenCalls.includes(tc));
 
         // Build hctx for tool execution
         const hctx: HarnessContext = {
@@ -357,6 +358,68 @@ export const runToolRound = internalAction({
               genesisBotResults: hctx.genesisBotResults,
             });
             await completePhaseAndContinue(ctx, run, phase, phaseIndex, output);
+            return;
+          }
+        }
+
+        // Run image generation calls concurrently (each takes 30-60s via Kie.ai)
+        // Process in batches of 5 to stay under the Convex action timeout
+        if (imageGenCalls.length > 0) {
+          const BATCH_SIZE = 5;
+          for (let batchStart = 0; batchStart < imageGenCalls.length; batchStart += BATCH_SIZE) {
+            const batch = imageGenCalls.slice(batchStart, batchStart + BATCH_SIZE);
+
+            for (const tc of batch) {
+              toolCallLog.push({ toolName: tc.name, arguments: tc.arguments, status: "running" });
+            }
+            await ctx.runMutation(internal.harness.internals.updatePhaseStatus, {
+              runId, phaseIndex, status: "running", toolCalls: toolCallLog,
+            });
+
+            const batchResults = await Promise.all(
+              batch.map(async (tc) => {
+                try {
+                  const parsedArgs = JSON.parse(tc.arguments || "{}");
+                  return await executeHarnessTool(hctx, tc.name, parsedArgs);
+                } catch (e: any) {
+                  return `Error: ${e.message}`;
+                }
+              }),
+            );
+
+            for (let i = 0; i < batch.length; i++) {
+              const tc = batch[i];
+              const toolResult = batchResults[i];
+              toolMessages.push({ role: "tool", tool_call_id: tc.id, content: toolResult });
+
+              const idx = toolCallLog.findIndex((t: any) => t.arguments === tc.arguments && t.status === "running");
+              if (idx >= 0) {
+                toolCallLog[idx] = {
+                  ...toolCallLog[idx],
+                  status: "completed",
+                  resultSummary: toolResult.length > 200 ? toolResult.slice(0, 200) + "..." : toolResult,
+                };
+              }
+            }
+
+            // Persist progress after each batch so state isn't lost on timeout
+            await ctx.runMutation(internal.harness.internals.updatePhaseStatus, {
+              runId, phaseIndex, status: "running", toolCalls: toolCallLog,
+            });
+          }
+
+          // If ALL calls were image gen (no other calls), persist and schedule next round
+          if (otherCalls.length === 0 && genesisCalls.length === 0) {
+            const finalMessages = [...updatedMessages, ...toolMessages];
+            await ctx.runMutation(internal.harness.internals.updatePhaseStatus, {
+              runId, phaseIndex, status: "running",
+              messages: finalMessages,
+              currentRound: round + 1,
+              toolCalls: toolCallLog,
+            });
+            await ctx.scheduler.runAfter(0, internal.harness.worker.runToolRound, {
+              runId, phaseIndex, round: round + 1,
+            });
             return;
           }
         }
