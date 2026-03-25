@@ -501,129 +501,98 @@ async function generateRunSummary(
   definition: any,
   allPhases: any[],
 ): Promise<string> {
-  try {
-    // Collect phase outputs and tool call info
-    const sorted = allPhases.sort((a: any, b: any) => a.phaseIndex - b.phaseIndex);
-    const phaseDetails = sorted.map((p: any) => {
-      const toolCalls = (p.toolCalls ?? []);
-      const genesisCallCount = toolCalls.filter((t: any) => t.toolName === "call_genesis_bot").length;
-      const imageGenCount = toolCalls.filter((t: any) => t.toolName === "generate_image").length;
-      const foundationCount = toolCalls.filter((t: any) => t.toolName === "foundation_doc").length;
+  const sorted = allPhases.sort((a: any, b: any) => a.phaseIndex - b.phaseIndex);
+  const lines: string[] = [`## ${definition.name} — Complete\n`];
 
-      // Summarize output
-      let outputSummary = "";
-      if (p.output && typeof p.output === "object") {
-        if (Array.isArray(p.output.ads)) {
-          const ads = p.output.ads;
-          outputSummary = `${ads.length} ad(s) produced. Briefs: ${ads.map((a: any) => a.brief_id || a.segment || "unknown").join(", ")}. `;
-          for (const ad of ads) {
-            const ptCount = Array.isArray(ad.primaryTexts) ? ad.primaryTexts.length : 0;
-            const hlCount = Array.isArray(ad.headlines) ? ad.headlines.length : 0;
-            outputSummary += `[${ad.brief_id || ad.segment}]: ${ptCount} primary texts, ${hlCount} headlines. `;
-          }
-        }
-        if (Array.isArray(p.output.image_concepts)) {
-          const concepts = p.output.image_concepts;
-          const byBrief: Record<string, number> = {};
-          const botsUsed = new Set<string>();
-          for (const c of concepts) {
-            const bid = c.brief_id || "unknown";
-            byBrief[bid] = (byBrief[bid] || 0) + 1;
-            if (c.format_bot_used) botsUsed.add(c.format_bot_used);
-            if (c.image_bot_used) botsUsed.add(c.image_bot_used);
-          }
-          outputSummary = `${concepts.length} image concept(s). Per brief: ${Object.entries(byBrief).map(([k, v]) => `${k}: ${v}`).join(", ")}. Bots used: ${[...botsUsed].join(", ")}. `;
-        }
-        if (Array.isArray(p.output.generated_images)) {
-          const imgs = p.output.generated_images;
-          const byBrief: Record<string, number> = {};
-          for (const img of imgs) {
-            const bid = (img.brief_id || "unknown").replace(/-\d+$/, "");
-            byBrief[bid] = (byBrief[bid] || 0) + 1;
-          }
-          outputSummary = `${imgs.length} image(s) generated. Per brief: ${Object.entries(byBrief).map(([k, v]) => `${k}: ${v}`).join(", ")}. `;
-          if (p.output.summary?.total_failed > 0) {
-            outputSummary += `${p.output.summary.total_failed} failed. `;
-          }
-        }
+  // Summarize each phase
+  for (const p of sorted) {
+    const toolCalls = (p as any).toolCalls ?? [];
+    const genesisCalls = toolCalls.filter((t: any) => t.toolName === "call_genesis_bot");
+    const imageGens = toolCalls.filter((t: any) => t.toolName === "generate_image");
+    const foundationDocs = toolCalls.filter((t: any) => t.toolName === "foundation_doc");
+    const output = (p as any).output;
+
+    lines.push(`### ${(p as any).phaseName}\n`);
+
+    if (foundationDocs.length > 0) {
+      lines.push(`- **Foundation docs loaded:** ${foundationDocs.length}`);
+    }
+    if (genesisCalls.length > 0) {
+      const botSlugs = new Set<string>();
+      for (const tc of genesisCalls) {
+        try { botSlugs.add(JSON.parse(tc.arguments).bot_slug); } catch { /* */ }
       }
-
-      return {
-        name: p.phaseName,
-        status: p.status,
-        genesisCallCount,
-        imageGenCount,
-        foundationCount,
-        outputSummary: outputSummary || "Completed.",
-      };
-    });
-
-    // Get workspace file list
-    const files = await ctx.runQuery(internal.workspace.internals.listFiles, {
-      threadId: run.threadId,
-    });
-    const fileList = files
-      .filter((f: any) => f.source === "harness")
-      .map((f: any) => `- ${f.filePath} (${formatBytes(f.sizeBytes)})`)
-      .join("\n");
-
-    // Build the summary using the LLM
-    const settings: any = await ctx.runQuery(internal.chat.internals.getSettings, { orgId: run.orgId });
-    const apiKey = settings?.llmApiKey || "";
-    const baseUrl = settings?.llmBaseUrl || "https://api.openai.com/v1";
-    const model = "openai/gpt-4o-mini";
-    const url = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "system",
-            content: `You are a creative production assistant. Write a concise, well-formatted summary of a completed harness workflow. Use markdown formatting. Be specific about numbers and what was produced. Keep it to 200-400 words.`,
-          },
-          {
-            role: "user",
-            content: `Summarize this completed "${definition.name}" workflow:
-
-## Phases Completed
-${phaseDetails.map((p: any) => `### ${p.name} (${p.status})
-- Genesis bot calls: ${p.genesisCallCount}
-- Image generations: ${p.imageGenCount}
-- Foundation docs loaded: ${p.foundationCount}
-- ${p.outputSummary}`).join("\n\n")}
-
-## Workspace Files Created
-${fileList || "None"}
-
-## User Input
-${run.offerSlug ? `Offer: ${run.offerSlug}` : "No offer specified"}
-
-Write a summary that:
-1. States what was produced (number of ads, images, concepts)
-2. Lists which Genesis bots and tools were used
-3. Notes the key workspace files the user should review
-4. Suggests next steps`,
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      return `**${definition.name}** completed successfully. ${phaseDetails.length} phases ran. Check the workspace panel for results.`;
+      lines.push(`- **Genesis bots called:** ${genesisCalls.length} (${[...botSlugs].join(", ")})`);
+    }
+    if (imageGens.length > 0) {
+      const completed = imageGens.filter((t: any) => t.status === "completed").length;
+      lines.push(`- **Images generated:** ${completed}/${imageGens.length}`);
     }
 
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content ?? `**${definition.name}** completed. Check workspace for results.`;
-  } catch {
-    // Fallback if summary generation fails
-    return `**${definition.name}** workflow completed successfully. Check the workspace panel for detailed results.`;
+    // Output-specific details
+    if (output && typeof output === "object") {
+      if (Array.isArray(output.ads)) {
+        lines.push(`- **Ads produced:** ${output.ads.length}`);
+        for (const ad of output.ads) {
+          const pt = Array.isArray(ad.primaryTexts) ? ad.primaryTexts.length : 0;
+          const hl = Array.isArray(ad.headlines) ? ad.headlines.length : 0;
+          const briefLabel = ad.brief_id || ad.segment || "unknown";
+          lines.push(`  - ${briefLabel}: ${pt} primary texts, ${hl} headlines`);
+        }
+      }
+      if (Array.isArray(output.image_concepts)) {
+        const byBrief: Record<string, number> = {};
+        const botsUsed = new Set<string>();
+        for (const c of output.image_concepts) {
+          const bid = c.brief_id || "unknown";
+          byBrief[bid] = (byBrief[bid] || 0) + 1;
+          if (c.format_bot_used) botsUsed.add(c.format_bot_used);
+          if (c.image_bot_used) botsUsed.add(c.image_bot_used);
+        }
+        lines.push(`- **Image concepts:** ${output.image_concepts.length}`);
+        for (const [bid, count] of Object.entries(byBrief)) {
+          lines.push(`  - ${bid}: ${count} concepts`);
+        }
+        if (botsUsed.size > 0) lines.push(`  - Formats: ${[...botsUsed].join(", ")}`);
+      }
+      if (Array.isArray(output.generated_images)) {
+        const byBrief: Record<string, number> = {};
+        for (const img of output.generated_images) {
+          const bid = (img.brief_id || "unknown").replace(/-\d+$/, "");
+          byBrief[bid] = (byBrief[bid] || 0) + 1;
+        }
+        lines.push(`- **Images generated:** ${output.generated_images.length}`);
+        for (const [bid, count] of Object.entries(byBrief)) {
+          lines.push(`  - ${bid}: ${count} images`);
+        }
+      }
+    }
+    lines.push("");
   }
+
+  // List workspace files
+  try {
+    const files = await ctx.runQuery(internal.workspace.internals.listFiles, { threadId: run.threadId });
+    const harnessFiles = files.filter((f: any) => f.source === "harness");
+    const imageFiles = harnessFiles.filter((f: any) => f.contentType?.startsWith("image/"));
+    const mdFiles = harnessFiles.filter((f: any) => f.filePath.endsWith(".md") && !f.filePath.startsWith("progress"));
+    const jsonFiles = harnessFiles.filter((f: any) => f.filePath.endsWith(".json"));
+
+    lines.push(`### Workspace Files\n`);
+    lines.push(`- **${imageFiles.length}** images`);
+    lines.push(`- **${mdFiles.length}** markdown documents`);
+    lines.push(`- **${jsonFiles.length}** data files`);
+    if (mdFiles.length > 0) {
+      lines.push(`\n**Key files to review:**`);
+      for (const f of mdFiles.slice(0, 10)) {
+        lines.push(`- ${f.filePath}`);
+      }
+    }
+  } catch { /* non-critical */ }
+
+  lines.push(`\n---\n*Click any file in the workspace panel to view. Use ← → arrows to navigate between files.*`);
+
+  return lines.join("\n");
 }
 
 function formatBytes(bytes: number): string {

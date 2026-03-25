@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { X, Download, Eye, Code, Copy, Check } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { X, Download, Eye, Code, Copy, Check, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { WorkspaceFile } from '@/types'
@@ -12,6 +12,8 @@ interface FileViewerProps {
   threadId: string
   orgId?: string
   onClose: () => void
+  allFiles?: WorkspaceFile[]
+  onNavigate?: (file: WorkspaceFile) => void
 }
 
 function formatFileSize(bytes: number): string {
@@ -45,7 +47,7 @@ function formatKeyTitle(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-export function FileViewer({ file, threadId, orgId, onClose }: FileViewerProps) {
+export function FileViewer({ file, threadId, orgId, onClose, allFiles, onNavigate }: FileViewerProps) {
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
   const [copied, setCopied] = useState(false)
 
@@ -55,14 +57,37 @@ export function FileViewer({ file, threadId, orgId, onClose }: FileViewerProps) 
     orgId,
   })
 
-  // Close on Escape
+  // Navigation: sorted file list and current index
+  const sortedFiles = useMemo(() => {
+    if (!allFiles?.length) return []
+    return [...allFiles].sort((a, b) => a.filePath.localeCompare(b.filePath))
+  }, [allFiles])
+
+  const currentIndex = useMemo(() => {
+    return sortedFiles.findIndex(f => f.filePath === file.filePath)
+  }, [sortedFiles, file.filePath])
+
+  const hasPrev = currentIndex > 0
+  const hasNext = currentIndex < sortedFiles.length - 1
+
+  const goPrev = useCallback(() => {
+    if (hasPrev && onNavigate) onNavigate(sortedFiles[currentIndex - 1])
+  }, [hasPrev, onNavigate, sortedFiles, currentIndex])
+
+  const goNext = useCallback(() => {
+    if (hasNext && onNavigate) onNavigate(sortedFiles[currentIndex + 1])
+  }, [hasNext, onNavigate, sortedFiles, currentIndex])
+
+  // Keyboard navigation: Escape to close, arrow keys to navigate
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft') goPrev()
+      if (e.key === 'ArrowRight') goNext()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  }, [onClose, goPrev, goNext])
 
   const content = fileData?.content ?? ''
   const imageUrl = (fileData as any)?.imageUrl ?? null
@@ -177,6 +202,30 @@ export function FileViewer({ file, threadId, orgId, onClose }: FileViewerProps) 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border/50">
           <div className="flex items-center gap-3 min-w-0">
+            {/* Prev/Next navigation */}
+            {sortedFiles.length > 1 && (
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button
+                  onClick={goPrev}
+                  disabled={!hasPrev}
+                  className="p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-25 disabled:cursor-default transition-colors"
+                  title="Previous file (←)"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="text-[10px] text-muted-foreground tabular-nums w-10 text-center">
+                  {currentIndex + 1}/{sortedFiles.length}
+                </span>
+                <button
+                  onClick={goNext}
+                  disabled={!hasNext}
+                  className="p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-25 disabled:cursor-default transition-colors"
+                  title="Next file (→)"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
             <h3 className="text-sm font-semibold text-foreground truncate">{file.filePath}</h3>
             <span className="text-xs text-muted-foreground shrink-0">{file.contentType}</span>
           </div>

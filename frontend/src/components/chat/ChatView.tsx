@@ -781,6 +781,8 @@ export function ChatView({ threadId, initialMessage }: ChatViewProps) {
           threadId={threadId}
           orgId={activeOrgId ?? undefined}
           onClose={() => setViewingFile(null)}
+          allFiles={workspaceFiles}
+          onNavigate={(file) => setViewingFile(file)}
         />
       )}
 
